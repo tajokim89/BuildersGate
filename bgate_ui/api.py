@@ -297,6 +297,23 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # the gate disabled, and a security control the tests never exercise is one that
 # breaks silently.
 _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0", "testserver"}
+
+
+def _extra_allowed_hosts() -> set[str]:
+    """Exact non-loopback hosts this operator explicitly trusts.
+
+    Tailscale Serve terminates HTTPS on the tailnet name and proxies to the
+    loopback dashboard, so the request Host becomes ``macmini.<tailnet>.ts.net``
+    rather than ``127.0.0.1``. Keep that as an explicit allow-list instead of
+    widening the DNS-rebinding guard.
+    """
+    raw = os.environ.get("BGATE_ALLOWED_HOSTS", "")
+    return {h.strip().lower().strip("[]") for h in raw.split(",") if h.strip()}
+
+
+def allowed_host(host: str) -> bool:
+    name = (host or "").strip().lower().rsplit(":", 1)[0].strip("[]")
+    return not name or name in _LOOPBACK_HOSTS or name in _extra_allowed_hosts()
 # Everything the browser needs before it can present a token.
 _OPEN_PATHS = ("/static/", "/play/", "/api/preview", "/favicon")
 
@@ -372,9 +389,10 @@ def install_guard(app, root_fn) -> None:
         # attack cannot forge without giving up the same-origin illusion it
         # depends on.
         host = (request.headers.get("host") or "").strip().lower()
-        if host and host.rsplit(":", 1)[0].strip("[]") not in _LOOPBACK_HOSTS:
+        if not allowed_host(host):
             return JSONResponse(status_code=403, content=error_body(
-                403, "request Host is not loopback", code="bad_host"))
+                403, "request Host is not loopback or explicitly allowed",
+                code="bad_host"))
 
         # Read the opt-out per request, not once at install time: the app is
         # imported when a test module is first collected, which is before any
