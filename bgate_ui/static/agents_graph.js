@@ -202,6 +202,8 @@
     edges: [],
     sel: null,
     positions: {},
+    hidden: new Set(),
+    _wsData: {},
     filter: "active",
     _sig: "",
     _saveT: null,
@@ -363,6 +365,7 @@
       const edges = [];
       const add = n => nodes.set(n.id, n);
       const IN = [{ id: "i", label: "" }], OUT = [{ id: "o", label: "" }];
+      const isHidden = id => this.hidden && this.hidden.has(String(id));
 
       const parentOf = id => Number(parents[id] || parents[String(id)] || 0);
 
@@ -550,7 +553,7 @@
             // as five more agents rather than one agent's five pockets.
             w: 226, x: p.x, y: p.y, seat: anchor.seat,
             accent: ph.state === "trouble" ? "var(--bad)" : seatColor(anchor.seat),
-            badge: arts.length ? `${arts.length} made` : "",
+            badge: arts.length ? `생성 ${arts.length}개` : "",
             running: ph.state === "running",
             status: ph.state === "running" ? "running"
               : ph.state === "trouble" ? "failed" : "passed",
@@ -603,7 +606,11 @@
 
       // Drop edges whose endpoints fell outside the window — a dangling edge
       // draws from nowhere and reads as a bug in the data.
-      return { nodes, edges: edges.filter(e => nodes.has(e.from[0]) && nodes.has(e.to[0])) };
+      const visible = new Map([...nodes].filter(([id]) => !isHidden(id)));
+      return {
+        nodes: visible,
+        edges: edges.filter(e => visible.has(e.from[0]) && visible.has(e.to[0])),
+      };
     },
 
     /* ---- render -------------------------------------------------------- */
@@ -622,6 +629,7 @@
           renderBody: n => this.body(n),
           onSelect: n => this.onSelect(n),
           onNodeMove: n => this.onMove(n),
+          onNodeRemove: id => this.onRemove(id),
         });
         this.nc.mount();
         this.renderDetail();
@@ -821,7 +829,7 @@
     detailHTML(n) {
       const head = (eyebrow, title) => `<div class="cg-dhead">
         <div><div class="cg-de">${esc(eyebrow)}</div><div class="cg-dt">${esc(title)}</div></div>
-        <button class="cg-x" aria-label="Close">×</button></div>`;
+        <button class="cg-x" aria-label="닫기">×</button></div>`;
 
       if (n.type === "seat") {
         const live = this.liveSet();
@@ -932,7 +940,7 @@
         if (g.kind === "art") {
           const img = g.path
             ? `<img class="cg-shot" src="/api/preview?rel=${encodeURIComponent(g.path)}" alt="">` : "";
-          return head("Approval gate", g.title)
+          return head("승인 게이트", g.title)
             + img
             + `<div class="cg-note">후보 승인은 사용자만 할 수 있습니다. 만든 에이전트는 승인할 수 없습니다.</div>`
             + `<div class="cg-acts">
@@ -1041,7 +1049,7 @@
         if (what === "steer") {
           const el = box && box.querySelector(".cg-steer-in");
           const text = (el && el.value || "").trim();
-          if (!text) { if (window.toast) toast("type a steer first"); return; }
+          if (!text) { if (window.toast) toast("먼저 조향 내용을 입력하세요"); return; }
           if (el) el.value = "";
           if (window._sendSteer) { await window._sendSteer(Number(id), text, el); }
           else await M(`/api/queue/${id}/steer`, { body: { text } });
@@ -1091,8 +1099,39 @@
       try {
         const d = await window.readJSON(WS_PATH, { data: {} });
         const data = (d && d.data) || {};
+        this._wsData = (data && typeof data === "object") ? data : {};
         if (data.positions && typeof data.positions === "object") this.positions = data.positions;
-      } catch (e) { this.positions = {}; }
+        const hidden = Array.isArray(data.hidden_nodes) ? data.hidden_nodes
+          : Array.isArray(data.hidden) ? data.hidden : [];
+        this.hidden = new Set(hidden.map(String).filter(Boolean));
+        this._sig = "";
+        if (this.state) this.rebuild();
+      } catch (e) { this.positions = {}; this.hidden = new Set(); this._wsData = {}; }
+      this.updateRestoreButton();
+    },
+
+    workspaceData() {
+      const base = {
+        ...(this._wsData && typeof this._wsData === "object" ? this._wsData : {}),
+      };
+      delete base._version;
+      return {
+        ...base,
+        positions: this.positions || {},
+        hidden_nodes: [...(this.hidden || new Set())],
+      };
+    },
+
+    scheduleSave(delay) {
+      clearTimeout(this._saveT);
+      this._saveT = setTimeout(() => this.saveWorkspace(), delay == null ? 800 : delay);
+    },
+
+    async saveWorkspace() {
+      const data = this.workspaceData();
+      this._wsData = data;
+      try { await window.mutate(WS_PATH, { body: { data }, quiet: true }); }
+      catch (e) {}
     },
 
     onMove(n) {
@@ -1100,10 +1139,40 @@
       const cur = this.nodes.get(n.id);
       if (cur) { cur.x = n.x; cur.y = n.y; }
       this.positions[n.id] = { x: n.x, y: n.y };
-      clearTimeout(this._saveT);
-      this._saveT = setTimeout(() => {
-        window.mutate(WS_PATH, { body: { data: { positions: this.positions } }, quiet: true });
-      }, 800);
+      this.scheduleSave();
+    },
+
+    onRemove(id) {
+      if (!id) return;
+      this.hidden.add(String(id));
+      this.nodes.delete(id);
+      this.edges = this.edges.filter(e => e.from[0] !== id && e.to[0] !== id);
+      if (this.sel === id) this.sel = null;
+      this._sig = "";
+      this.renderDetail();
+      this.updateRestoreButton();
+      this.scheduleSave(120);
+      if (window.toast) toast("노드를 숨겼습니다. 새로고침해도 유지됩니다.", "ok");
+    },
+
+    restoreHidden() {
+      if (!this.hidden || !this.hidden.size) return;
+      this.hidden = new Set();
+      this.nodes = new Map();
+      this._sig = "";
+      this.rebuild();
+      this.updateRestoreButton();
+      this.scheduleSave(0);
+      if (window.toast) toast("숨긴 노드를 다시 표시했습니다.", "ok");
+    },
+
+    updateRestoreButton() {
+      const b = document.getElementById("ck-restore-hidden");
+      if (!b) return;
+      const count = this.hidden ? this.hidden.size : 0;
+      b.hidden = !count;
+      b.textContent = count ? `숨김 복원 ${count}` : "숨김 복원";
+      b.title = count ? `숨긴 노드 ${count}개를 다시 표시합니다` : "숨긴 노드가 없습니다";
     },
 
     relayout() {
@@ -1112,7 +1181,7 @@
       this.positions = {};
       this.nodes = new Map();
       this._sig = "";
-      window.mutate(WS_PATH, { body: { data: { positions: {} } }, quiet: true });
+      this.scheduleSave(0);
       this.rebuild();
       if (this.nc) this.nc.fit();
     },

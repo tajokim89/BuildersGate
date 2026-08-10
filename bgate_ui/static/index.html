@@ -343,13 +343,13 @@
                    together are the whole "how much am I in the loop" decision:
                    auto-deploy says whether work STARTS without you, this says
                    whether it FINISHES without you. -->
-              <span class="ck-gate" id="ck-gate" role="group" aria-label="Approval gate">
+              <span class="ck-gate" id="ck-gate" role="group" aria-label="승인 게이트">
                 <button class="ck-gopt" data-gate="none" type="button"
-                        title="No gate - an agent's own word closes its item">none</button>
+                        title="게이트 없음 - 에이전트 보고만으로 항목을 닫습니다">없음</button>
                 <button class="ck-gopt" data-gate="agent" type="button"
-                        title="Agent gate - the QA seat verifies every deliverable">agent</button>
+                        title="에이전트 게이트 - 검수 좌석이 모든 결과물을 확인합니다">에이전트</button>
                 <button class="ck-gopt" data-gate="builders" type="button"
-                        title="Builder's gate - you approve before anything counts as done">builder's</button>
+                        title="빌더 게이트 - 사용자가 승인해야 완료로 인정합니다">빌더</button>
               </span>
               <span class="ck-spacer"></span>
               <!-- The kill switch. Deliberately always visible and never behind
@@ -357,11 +357,12 @@
                    looking. `bgate panic` does the same from a terminal, for
                    when this page is the thing that is wedged. -->
               <button class="ck-panic" id="ck-panic" type="button"
-                      title="Stop every agent on this project and turn auto-deploy off">stop all</button>
+                      title="이 프로젝트의 모든 에이전트를 멈추고 자동 투입을 끕니다">전체 중지</button>
               <button class="qbtn small ghost" id="ck-filter" type="button"
-                      title="Showing work that is running, queued, broken, or just landed">in flight</button>
-              <button class="qbtn small ghost" id="ck-fit" type="button">fit</button>
-              <button class="qbtn small ghost" id="ck-relayout" type="button">re-lay out</button>
+                      title="실행 중, 대기 중, 실패했거나 막 끝난 작업을 표시합니다">진행 중</button>
+              <button class="qbtn small ghost" id="ck-fit" type="button">맞춤</button>
+              <button class="qbtn small ghost" id="ck-relayout" type="button">다시 배치</button>
+              <button class="qbtn small ghost" id="ck-restore-hidden" type="button" hidden>숨김 복원</button>
             </div>
             <div class="ck-canvas" id="ck-canvas"></div>
             <!-- OUTSIDE #ck-detail deliberately: agents_graph rewrites that

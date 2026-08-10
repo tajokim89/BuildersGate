@@ -348,6 +348,8 @@
       if (history) history.onclick = () => this.openHistory();
       const relayout = document.getElementById("ck-relayout");
       if (relayout) relayout.onclick = () => window.AgentsGraph && AgentsGraph.relayout();
+      const restoreHidden = document.getElementById("ck-restore-hidden");
+      if (restoreHidden) restoreHidden.onclick = () => window.AgentsGraph && AgentsGraph.restoreHidden();
       const fit = document.getElementById("ck-fit");
       if (fit) fit.onclick = () => window.AgentsGraph && AgentsGraph.fit();
 
