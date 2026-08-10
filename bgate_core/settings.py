@@ -229,6 +229,17 @@ SETTINGS: tuple[Setting, ...] = (
              "hours. A seat that edits GDScript does not need the biggest "
              "model; naming one here is what stops the default deciding."),
     Setting(
+        key="dispatch.runner", group="Dispatch", kind=ENUM, default="claude",
+        choices=("claude", "codex"),
+        store=("registry", "dispatch.runner"), scope=MACHINE,
+        env="BGATE_DISPATCH_RUNNER", human_only=True,
+        help="Which CLI non-art board agents run on. `claude` is the upstream "
+             "default and keeps live steering and cost tracking. `codex` uses "
+             "the local Codex CLI login instead of any API key, but this "
+             "project has only validated Codex for the art seat so far; "
+             "non-art Codex runs are local-machine opt-in, cost-not-tracked, "
+             "and cannot be steered mid-run."),
+    Setting(
         key="dispatch.model_art", group="Dispatch", kind=STRING, default="opus",
         store=("registry", "dispatch.model_art"), scope=MACHINE,
         env="BGATE_MODEL_ART", human_only=True,
@@ -463,7 +474,7 @@ SETTINGS: tuple[Setting, ...] = (
              "long-running agent otherwise paints a node taller than the "
              "canvas."),
     Setting(
-        key="brainstorm.runner", group="Console", kind=STRING, default="claude",
+        key="brainstorm.runner", group="Console", kind=STRING, default="codex",
         store=("registry", "brainstorm.runner"), scope=MACHINE,
         env="BGATE_BRAINSTORM_RUNNER", human_only=True,
         # NOT an ENUM. The list of runners that can hold a read-only
@@ -477,10 +488,10 @@ SETTINGS: tuple[Setting, ...] = (
              "nothing else — so it can talk, it can join your diagram, and it "
              "cannot reach the queue, the repo or a generator. A runner that "
              "has not declared that read-only mode is refused rather than "
-             "started with the dispatch flags. `claude` is the only one that "
-             "has, so far; codex and local models are one table entry each."),
+             "started with the dispatch flags. `codex` runs through the local "
+             "Codex CLI login, not through an API key."),
     Setting(
-        key="brainstorm.model", group="Console", kind=STRING, default="sonnet",
+        key="brainstorm.model", group="Console", kind=STRING, default="gpt-5.6-sol",
         store=("registry", "brainstorm.model"), scope=MACHINE,
         env="BGATE_BRAINSTORM_MODEL", human_only=True,
         help="The model a brainstorm turn runs on. Named rather than inherited "

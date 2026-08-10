@@ -2089,18 +2089,18 @@
   }
   .ck-welcome{color:var(--text-3); font-size:var(--fs-sm); line-height:var(--lh)}
   .ck-welcome .ck-eg{margin-top:var(--s-5); color:var(--text-dim); font-family:var(--mono); font-size:var(--fs-xs)}
-  .ck-turn{display:flex; flex-direction:column; gap:var(--s-4); cursor:pointer}
-  .ck-msg{border-radius:var(--r-md); padding:var(--s-4) var(--s-5); max-width:100%}
+  .ck-turn{display:flex; flex-direction:column; gap:var(--s-5); cursor:pointer}
+  .ck-msg{border-radius:var(--r-md); padding:var(--s-5) var(--s-6); max-width:100%}
   .ck-msg.you{background:var(--surface-3); border:1px solid var(--line)}
   .ck-msg.dir{background:var(--accent-wash); border:1px solid var(--accent-line)}
   .ck-msg.dir.bad{background:var(--bad-soft); border-color:var(--bad-line)}
   .ck-who{
-    font-family:var(--mono); font-size:var(--fs-3xs); text-transform:uppercase;
+    font-family:var(--mono); font-size:11px; text-transform:uppercase;
     letter-spacing:var(--track-label); color:var(--text-3); margin-bottom:var(--s-3);
     display:flex; align-items:center; gap:var(--s-3);
   }
   .ck-msg.dir .ck-who{color:var(--accent)}
-  .ck-txt{font-size:var(--fs-sm); line-height:var(--lh); color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere}
+  .ck-txt{font-size:15px; line-height:1.65; color:var(--text); white-space:pre-wrap; overflow-wrap:anywhere}
   .ck-txt.thinking{color:var(--text-3); font-style:italic}
   .ck-cost,.ck-steps{margin-top:var(--s-3); font-family:var(--mono); font-size:var(--fs-3xs); color:var(--text-3)}
   .ck-dots{display:inline-flex; gap:3px}
@@ -2181,9 +2181,9 @@
   .ck-msg.steer.read .ck-steps{color:var(--good)}
   .ck-composer{display:flex; gap:var(--s-4); align-items:flex-end}
   .ck-composer textarea{
-    flex:1; resize:none; min-height:40px; padding:var(--s-5);
+    flex:1; resize:none; min-height:48px; padding:var(--s-5) var(--s-6);
     background:var(--surface-1); border:1px solid var(--line); border-radius:var(--r-md);
-    color:var(--text); font:inherit; font-size:var(--fs-sm); line-height:var(--lh);
+    color:var(--text); font:inherit; font-size:15px; line-height:1.6;
   }
   .ck-composer textarea:focus{outline:none; border-color:var(--accent)}
   .ck-composer .qbtn{border-radius:var(--r-full); padding:var(--s-4) var(--s-6)}

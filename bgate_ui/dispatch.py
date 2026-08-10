@@ -162,18 +162,45 @@ def _executable(runner: "_runners.Runner") -> Optional[str]:
 def _runner_for(root: str, seat: str) -> "_runners.Runner":
     """Which CLI this seat's agent runs on.
 
-    ONLY THE ART SEAT IS ROUTABLE, and that is a deliberate ceiling rather than
-    an unfinished generalisation. The alternative runner is here because it
-    generates images; no other seat gains anything from it, and every seat that
-    moves onto it loses live steering and the cost ceiling. A single global
-    switch would put the whole board one wrong click away from that.
+    Art is still the only seat whose alternate runner is part of the upstream
+    product shape: Codex generates images natively, which is an art-seat
+    feature. A machine may also opt non-art seats into Codex with
+    dispatch.runner/BGATE_DISPATCH_RUNNER when local auth is the point, but that
+    remains explicit because those runs lose live steering and cost tracking.
     """
     if (seat or "").strip().lower() != "art":
-        return _runners.get(_runners.DEFAULT_RUNNER)
+        try:
+            return _runners.get(str(_settings.get(root, "dispatch.runner")))
+        except Exception:
+            return _runners.get(_runners.DEFAULT_RUNNER)
     try:
         return _runners.get(str(_settings.get(root, "art.runner")))
     except Exception:
         return _runners.get(_runners.DEFAULT_RUNNER)
+
+
+_CODEX_MODEL_BY_SEAT = {
+    "director": "gpt-5.6-sol",
+    "qa": "gpt-5.6-sol",
+    "gameplay": "gpt-5.6-terra",
+    "tech": "gpt-5.6-terra",
+    "art": "gpt-5.6-luna",
+    "narrative": "gpt-5.6-luna",
+    "audio": "gpt-5.6-luna",
+}
+
+
+def _codex_model_for_seat(seat: str) -> str:
+    """Codex defaults are split by seat instead of one global model pin."""
+    normalized = (seat or "").strip().lower()
+    env_suffix = "".join(ch if ch.isalnum() else "_" for ch in normalized.upper())
+    if env_suffix:
+        override = os.environ.get(f"BGATE_CODEX_MODEL_{env_suffix}")
+        if override:
+            return override.strip()
+    if normalized in _CODEX_MODEL_BY_SEAT:
+        return _CODEX_MODEL_BY_SEAT[normalized]
+    return (os.environ.get("BGATE_CODEX_MODEL") or "gpt-5.6-sol").strip()
 
 
 def _model_for(root: str, seat: str) -> Optional[str]:
@@ -205,6 +232,26 @@ def _model_for(root: str, seat: str) -> Optional[str]:
         return chosen or None
     except Exception:
         return None
+
+
+def _model_for_runner(root: str, seat: str, runner: "_runners.Runner",
+                      chosen: Optional[str]) -> Optional[str]:
+    """The model name must belong to the CLI that will receive it.
+
+    The dispatch registry default is a Claude tier name. When a local machine
+    opts non-art seats into Codex to avoid an expired Claude OAuth session, the
+    same setting would otherwise send ``--model sonnet`` to Codex and fail for
+    the wrong reason. Keep the explicit CLI boundary here instead of teaching
+    every caller which model vocabulary each runner accepts.
+    """
+    model = (chosen or _model_for(root, seat) or "").strip()
+    if runner.name != "codex":
+        return model or None
+    lowered = model.lower()
+    if (not model or lowered in ("sonnet", "opus", "haiku")
+            or lowered.startswith("claude")):
+        return _codex_model_for_seat(seat)
+    return model
 
 
 def _max_turns(root: str) -> int:
@@ -770,7 +817,7 @@ def _spawn(root: str, item_id: int, *, permission_mode: str = "acceptEdits",
     # An explicit model on the call wins; otherwise the seat's configured one.
     # Before _model_for existed this was `model` alone, which every caller left
     # as None — see _model_for for what that cost.
-    model = model or _model_for(root, item.get("seat") or "")
+    model = _model_for_runner(root, item.get("seat") or "", runner, model)
     args = runner.build_args(exe, permission_mode=permission_mode,
                              model=model, cwd=cwd, native_images=native_images,
                              max_turns=_max_turns(root))
@@ -897,6 +944,26 @@ _ERROR_SUBTYPES = ("error", "error_during_execution", "error_max_turns",
                    "error_max_tokens")
 
 
+def _final_is_error(final: dict) -> bool:
+    """Whether a terminal CLI event is a failed run, regardless of subtype.
+
+    Claude can emit ``subtype:"success"`` while also setting ``is_error:true``
+    and carrying a 401 auth error in the assistant text. The subtype describes
+    the CLI process finishing, not the work succeeding.
+    """
+    if not final:
+        return False
+    subtype = str(final.get("subtype") or "")
+    said = str(final.get("text") or final.get("result") or "").strip()
+    if final.get("is_error") is True or final.get("api_error_status"):
+        return True
+    if subtype in _ERROR_SUBTYPES:
+        return True
+    low = said.lower()
+    return low.startswith("failed to authenticate") or (
+        "oauth" in low and "expired" in low)
+
+
 def _terminal_error(root: str, item_id: int) -> str:
     """The sentence to fail this run with, or "" if it has not errored out.
 
@@ -909,18 +976,7 @@ def _terminal_error(root: str, item_id: int) -> str:
         return ""
     subtype = str(final.get("subtype") or "")
     said = str(final.get("text") or "").strip()
-    errored = final.get("is_error") is True or subtype in _ERROR_SUBTYPES
-    if not errored and subtype and subtype != "success":
-        # Some builds report an auth/setup failure as a plain result with no
-        # error flag at all; the CLI's own wording is the only signal left.
-        # Gated on the subtype NOT being success, because an agent reporting
-        # ABOUT auth — "failed to authenticate against the test fixture, so I
-        # stubbed it" — is a run that worked, and reaping it throws the work
-        # away over a sentence.
-        low = said.lower()
-        errored = low.startswith("failed to authenticate") or (
-            "oauth" in low and "expired" in low)
-    if not errored:
+    if not _final_is_error(final):
         return ""
     return (f"the session ended in error ({subtype or 'error'})"
             + (f": {said[:400]}" if said else "")
@@ -1243,6 +1299,9 @@ def _exit_verdict(root: str, item_id: int, code, entry: dict) -> tuple[str, str]
         return "failed", ("session exited 0 without ever reporting a result — "
                           "nothing was accounted for, so this is not done "
                           "(a crashed or no-op run looks exactly like this)")
+    if _final_is_error(final):
+        return "failed", (f"session ended in error ({final.get('subtype') or 'error'}"
+                          f") without self-reporting{tail}")
     if final.get("subtype") != "success":
         return "failed", (f"session ended as {final.get('subtype')!r} without "
                           f"self-reporting{tail}")
@@ -1384,7 +1443,11 @@ def reconcile(root: str) -> dict:
             if item_id in _live:
                 continue  # this server run owns it
         final = _final_event(root, item_id)
-        if final.get("subtype") == "success":
+        error = _terminal_error(root, item_id)
+        if error:
+            outcome = "failed"
+            result = "the dashboard restarted before this was banked; " + error
+        elif final.get("subtype") == "success":
             outcome = "done"
             said = str(final.get("text") or "").strip()[:400]
             result = ("the dashboard restarted before this was banked; the "

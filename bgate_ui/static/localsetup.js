@@ -409,7 +409,8 @@
         <span class="lc-pill">${r.steerable ? "steerable mid-run" : "no live steering"}</span>
         <span class="lc-pill">${r.cost_tracked ? "cost tracked" : "cost NOT tracked"}</span>
       </div>
-      <div class="lc-what">${esc(r.used_for)} ${esc(r.note || "")}</div>
+      <div class="lc-what"><span>${esc(r.used_for)}</span>
+        ${r.note ? `<span>${esc(r.note)}</span>` : ""}</div>
       ${r.installed
         ? kv([["found at", r.path]])
         : `<div class="lc-why">Not on PATH. Install it and reload this page —
@@ -573,15 +574,15 @@
       if (where === "agents") {
         const a = this.agents || {};
         host.innerHTML = a.__error
-          ? `<div class="lc-wrap"><div class="lc-none">could not read the
-             coding-agent CLIs — ${esc(a.__error)}</div></div>`
+          ? `<div class="lc-wrap"><div class="lc-none">코딩 에이전트 CLI를
+             읽을 수 없습니다 - ${esc(a.__error)}</div></div>`
           : this.agentsHtml(a);
         return;
       }
       const d = this.data || {};
       if (d.__error) {
-        host.innerHTML = `<div class="lc-wrap"><div class="lc-none">could not read
-          the local setup — ${esc(d.__error)}</div></div>`;
+        host.innerHTML = `<div class="lc-wrap"><div class="lc-none">로컬 설정을
+          읽을 수 없습니다 - ${esc(d.__error)}</div></div>`;
         return;
       }
       host.innerHTML = where === "studio" ? this.studioHtml(d)
@@ -589,13 +590,12 @@
     },
 
     storageNote() {
-      return `<p class="lc-note">These are addresses and file paths, so unlike an
-        API key they are shown back to you in full — a path you cannot read is a
-        path you cannot check for the typo. They are written to <code>.env</code>
-        at the game project root, the same file the keys live in, and take effect
-        immediately with no restart. <b>Nothing here starts or stops anything.</b>
-        Builders Gate talks to software you run; it does not run it, so it can
-        never leave a model loaded in your GPU after you close this page.</p>`;
+      return `<p class="lc-note">여기 값은 주소와 파일 경로라서, 키와 달리 전체를
+        다시 보여줍니다. 읽을 수 없는 경로는 오타도 확인할 수 없습니다. 값은
+        게임 프로젝트 루트의 <code>.env</code>에 기록되고, 재시작 없이 바로
+        적용됩니다. <b>여기서는 아무것도 시작하거나 중지하지 않습니다.</b>
+        Builders Gate는 사용자가 실행한 소프트웨어와 통신할 뿐 직접 실행하지
+        않으므로, 이 페이지를 닫은 뒤 모델을 GPU에 남겨 두지 않습니다.</p>`;
     },
 
     /* ONE LINE, AND IT IS THE SAME LINE `bgate doctor` PRINTS — built by
@@ -614,15 +614,14 @@
       const rows = d.runtimes || [];
       return `<div class="lc-wrap">
         <div class="lc-head">
-          <span class="lc-eyebrow">No key, no bill, nothing leaves the machine</span>
-          <h3>Local generators</h3>
+          <span class="lc-eyebrow">키 없음, 과금 없음, 기기 밖 전송 없음</span>
+          <h3>로컬 생성기</h3>
         </div>
         ${this.summaryLine(d)}
         ${this.storageNote()}
         <div class="lc-grid">${rows.length
           ? rows.map(r => runtimeCard(r, !!this._open[r.id])).join("")
-          : `<div class="lc-none">no local runtimes are registered in this
-             build.</div>`}</div>
+          : `<div class="lc-none">이 빌드에는 등록된 로컬 런타임이 없습니다.</div>`}</div>
       </div>`;
     },
 
@@ -632,21 +631,20 @@
       const on = rows.filter(r => r.installed).length;
       return `<div class="lc-wrap">
         <div class="lc-head">
-          <span class="lc-eyebrow">Installation &amp; wiring</span>
-          <h3>Agent CLIs</h3>
+          <span class="lc-eyebrow">설치 및 연결</span>
+          <h3>에이전트 CLI</h3>
         </div>
         <div class="lc-sum ${wired ? "good" : ""}">${icon("doctor", 13)}
-          <span>${on} of ${rows.length} installed, ${wired} wired to this
-          interpreter</span></div>
-        <p class="lc-note">Registering an MCP server writes to that CLI's own
-          config in your home directory, not to this project — every future
-          session of it, in any directory, gets the Builders Gate tools. It is
-          pinned to the interpreter this dashboard runs on, which is the part
-          that is usually wrong.</p>
+          <span>${rows.length}개 중 ${on}개 설치됨, ${wired}개가 이
+          인터프리터에 연결됨</span></div>
+        <p class="lc-note">MCP 서버 등록은 이 프로젝트가 아니라 홈 디렉터리의
+          해당 CLI 설정에 기록됩니다. 이후 어느 디렉터리, 어느 프로젝트에서든
+          그 CLI 세션은 Builders Gate 도구를 받습니다. 이 대시보드가 실행 중인
+          인터프리터에 고정되며, 보통 틀어지는 부분이 바로 이 지점입니다.</p>
         <div class="lc-grid">${rows.length
           ? rows.map(r => agentCard(r, a.why_absolute)).join("")
-          : `<div class="lc-none">no coding-agent CLI is described in this
-             build.</div>`}</div>
+          : `<div class="lc-none">이 빌드에는 코딩 에이전트 CLI 설명이
+             없습니다.</div>`}</div>
       </div>`;
     },
 
@@ -662,20 +660,19 @@
         const live = mine.filter(r => r.available).length;
         return `<div class="lc-sec"><div class="lc-sech">
             <span>${esc(caps[capId])}</span>
-            <span class="n">${live} of ${mine.length} running here</span></div>
+            <span class="n">${mine.length}개 중 ${live}개가 여기서 실행 중</span></div>
           <div class="lc-grid">${mine.map(r =>
             runtimeCard(r, !!this._open[r.id])).join("")}</div></div>`;
       }).join("");
       return `<div class="lc-wrap">
         <div class="lc-head">
-          <span class="lc-eyebrow">No key, no bill, nothing leaves the machine</span>
-          <h3>On this machine</h3>
+          <span class="lc-eyebrow">키 없음, 과금 없음, 기기 밖 전송 없음</span>
+          <h3>이 기기</h3>
         </div>
-        <p class="lc-note">The other half of the answer above. A capability is
-          available if EITHER a provider has a key or something local is running
-          — these are the local ones. Set them up in
-          <b>Settings → Local generators</b>.</p>
-        ${secs || `<div class="lc-none">nothing local is registered.</div>`}
+        <p class="lc-note">위 목록의 다른 절반입니다. 공급자 키가 있거나 로컬
+          프로그램이 실행 중이면 해당 기능을 사용할 수 있습니다. 여기는 그중
+          로컬 항목만 보여줍니다. <b>설정 → 로컬 생성기</b>에서 지정하세요.</p>
+        ${secs || `<div class="lc-none">등록된 로컬 항목이 없습니다.</div>`}
       </div>`;
     },
 
@@ -726,9 +723,9 @@
       delete this._insp[runtime];
       this.repaint();
       const now = (r.data.runtimes || []).filter(x => x.id === runtime)[0] || {};
-      if (!value.trim()) say("cleared", "ok");
-      else if (now.stage === "ready") say(`${now.label} is ready`, "ok");
-      else say(`saved - ${now.reason || now.stage_label || "still not ready"}`);
+      if (!value.trim()) say("지웠습니다", "ok");
+      else if (now.stage === "ready") say(`${now.label} 준비됨`, "ok");
+      else say(`저장됨 - ${now.reason || now.stage_label || "아직 준비되지 않음"}`);
     },
 
     async clear(id, where, button) {
@@ -759,19 +756,18 @@
       if (this._busy) return;
       if (typeof window.askConfirm === "function") {
         const yes = await window.askConfirm({
-          title: `Register Builders Gate with ${id}?`,
-          body: `This writes to that CLI's own config in your home directory,
-                 not to this project. Every future session of it — in any
-                 directory, on any project — gets the Builders Gate tools. It is
-                 pinned to the interpreter this dashboard is running on, which
-                 is the part that is usually wrong. You can remove it again from
-                 here.`,
-          ok: "register it", cancel: "not now",
+          title: `${id}에 Builders Gate를 등록할까요?`,
+          body: `이 작업은 이 프로젝트가 아니라 홈 디렉터리의 해당 CLI 설정에
+                 기록됩니다. 이후 어느 디렉터리, 어느 프로젝트에서든 그 CLI
+                 세션은 Builders Gate 도구를 받습니다. 이 대시보드가 실행 중인
+                 인터프리터에 고정되며, 보통 틀어지는 부분이 바로 이 지점입니다.
+                 여기서 다시 제거할 수 있습니다.`,
+          ok: "등록", cancel: "나중에",
         });
         if (!yes) return;
       }
       this._busy = id;
-      this.said(id, "asking the CLI to register it…");
+      this.said(id, "CLI에 등록을 요청하는 중...");
       const r = await window.mutate(
         `/api/local/agents/${encodeURIComponent(id)}/register`,
         { method: "POST", button, quiet: true });
@@ -779,9 +775,9 @@
       if (!r.ok) { this.said(id, r.error, "warn"); say(r.error); return; }
       this.agents = r.data; this._aread = Date.now();
       this.paint("agents");
-      say("registered - restart that CLI before the tools appear", "ok");
-      this.said(id, "registered. A CLI already running will not see it until "
-                  + "you restart it.", "good");
+      say("등록됨 - 도구가 나타나려면 해당 CLI를 다시 시작하세요", "ok");
+      this.said(id, "등록됨. 이미 실행 중인 CLI는 다시 시작해야 이 등록을 봅니다.",
+                "good");
     },
 
     async unregister(id, where, button) {
@@ -794,20 +790,20 @@
       if (!r.ok) { this.said(id, r.error, "warn"); return; }
       this.agents = r.data; this._aread = Date.now();
       this.paint("agents");
-      say("removed", "ok");
+      say("제거됨", "ok");
     },
 
     async verify(id, where, button) {
       if (this._busy) return;
       this._busy = id;
-      this.said(id, "asking that interpreter whether it can load the server…");
+      this.said(id, "해당 인터프리터가 서버를 불러올 수 있는지 확인 중...");
       const r = await window.mutate(
         `/api/local/agents/${encodeURIComponent(id)}/verify`,
         { method: "POST", button, quiet: true });
       this._busy = "";
       if (!r.ok) { this.said(id, r.error, "warn"); return; }
       const d = r.data || {};
-      this.said(id, d.ok ? d.detail : `${d.error || "it could not"} - ${d.output || ""}`,
+      this.said(id, d.ok ? d.detail : `${d.error || "실패했습니다"} - ${d.output || ""}`,
                 d.ok ? "good" : "warn");
     },
 
@@ -817,8 +813,8 @@
       if (!line) return;
       try {
         navigator.clipboard.writeText(line);
-        say("command copied", "ok");
-      } catch (e) { say("could not reach the clipboard - select it by hand"); }
+        say("명령을 복사했습니다", "ok");
+      } catch (e) { say("클립보드에 접근할 수 없습니다. 직접 선택해 주세요"); }
     },
   };
 

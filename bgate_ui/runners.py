@@ -321,7 +321,7 @@ CLAUDE_READONLY_BY = (
 
 def _claude_chat_args(exe: str, *, system: str, model: Optional[str],
                       max_usd: float = 0.0, mcp_config: str = "",
-                      resume: str = "") -> list[str]:
+                      resume: str = "", cwd: str = "") -> list[str]:
     """A Claude Code session that can THINK and cannot TOUCH THE PROJECT.
 
     Same CLI and the same stream-json channel as a dispatched agent — one
@@ -366,6 +366,40 @@ def _claude_chat_args(exe: str, *, system: str, model: Optional[str],
         + (["--max-budget-usd", f"{max_usd:.2f}"] if max_usd > 0 else [])
 
 
+CODEX_READONLY_BY = (
+    "codex exec --ignore-user-config --ignore-rules (so user/project MCP "
+    "servers and rules are not loaded), --sandbox read-only, --ephemeral, "
+    "--skip-git-repo-check inside the brainstorm scratch directory, and no "
+    "Builders Gate MCP override. The prompt is sent through local Codex CLI "
+    "stdin using the existing ChatGPT login, not an API key.")
+
+
+def _codex_chat_args(exe: str, *, system: str, model: Optional[str],
+                     max_usd: float = 0.0, mcp_config: str = "",
+                     resume: str = "", cwd: str = "") -> list[str]:
+    """A one-shot Codex thinking turn, with user config and tools absent.
+
+    Codex does not expose the same held-open stream-json conversation shape
+    Claude Code does. `codex exec` reads one prompt, answers, and exits, so the
+    brainstorm room re-seeds the transcript on each turn. That is still local
+    Codex CLI auth, not an API key, and it avoids the expired Claude OAuth path.
+
+    The safety claim is made with process flags rather than a prompt:
+    --ignore-user-config keeps the persistent Builders Gate MCP registration
+    out of this room, --ignore-rules keeps AGENTS.md out of it, --sandbox
+    read-only makes any accidental shell path unable to write, and --ephemeral
+    keeps these short brainstorming turns out of the Codex session store.
+    """
+    args = [exe, "exec", "--json", "--ignore-user-config", "--ignore-rules",
+            "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral",
+            "--disable", "image_generation"]
+    if cwd:
+        args[2:2] = ["--cd", cwd]
+    if model:
+        args += ["--model", model]
+    return args + ["-"]
+
+
 # `find` is late-bound through this module's own globals rather than holding the
 # function object, so monkeypatching `runners.find_claude` (which the dispatch
 # tests do, to stand a fake CLI up on disk) is actually seen by the table.
@@ -379,28 +413,8 @@ RUNNERS: dict[str, Runner] = {
     "codex": Runner(
         name="codex", find=lambda: find_codex(), steerable=False, cost_tracked=False,
         prompt_via="stdin_once", requires_git_repo=True, build_args=_codex_args,
-        # NO CHAT ENTRY, AND THAT IS A STATEMENT RATHER THAN A GAP. Codex
-        # documents `--sandbox read-only`, which is the right mechanism, but the
-        # claude one above was believed only because its own init event was read
-        # back and a write attempt was made and failed. Nothing here has been
-        # verified that way, and a read-only claim that turns out to be wrong is
-        # worse than a runner the room refuses to use.
-        #
-        # WHAT A CODEX (OR LOCAL-LLM) ENTRY NEEDS, so this is one row of work:
-        #   build_args   argv that removes the capability rather than declining
-        #                to use it — for codex `--sandbox read-only --cd <a
-        #                scratch dir>` and NO mcp_overrides() call, since that
-        #                helper injects the whole builders-gate server including
-        #                its writers.
-        #   prompt_via   "stdin_once" for `codex exec`, which reads stdin once
-        #                and closes it. brainsession already handles that: it
-        #                re-seeds a fresh process with the transcript per turn
-        #                rather than pretending the conversation persisted.
-        #   cost_tracked False for codex — it reports tokens and no price, so a
-        #                brainstorm on it spends against the ledger's blind
-        #                spot and the payload says so.
-        #   readonly_by the sentence a human is shown when they ask why they
-        #                should believe the room writes nothing.
+        chat=Chat(build_args=_codex_chat_args, prompt_via="stdin_once",
+                  cost_tracked=False, readonly_by=CODEX_READONLY_BY),
         note="Generates images natively. No live steering, and it reports "
              "tokens rather than dollars — the per-run cost ceiling cannot "
              "bite, so runs on it are marked cost-not-tracked."),

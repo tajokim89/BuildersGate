@@ -663,26 +663,29 @@
     _frame(shell) {
       this._detachPv();
       const p = this.payload || {};
+      const precedence = (p.precedence || "env > project stored > default")
+        .replace("env > project stored > default",
+                 "환경 변수 > 프로젝트 저장값 > 기본값");
       shell.innerHTML = `<div id="cfg-frame">
         <div class="cfg-top">
           <div>
-            <div class="cfg-h1">Settings</div>
-            <div class="cfg-sub">Precedence is
-              <code>${esc(p.precedence || "env > project stored > default")}</code>
-              — every row says which layer won, and a row the environment owns
-              names the variable and cannot be edited here.</div>
+            <div class="cfg-h1">설정</div>
+            <div class="cfg-sub">우선순위:
+              <code>${esc(precedence)}</code>
+              - 각 행에는 적용된 계층이 표시됩니다. 환경 변수가 소유한 행은
+              변수명을 표시하며 여기서는 편집할 수 없습니다.</div>
           </div>
           <div class="cfg-tools">
             <label class="cfg-find">${icon("qa", 14)}<input class="cfg-search"
               id="cfg-search" type="search" autocomplete="off" spellcheck="false"
-              aria-label="filter settings"
-              placeholder="filter key or help text"
+              aria-label="설정 검색"
+              placeholder="키 또는 도움말 검색"
               value="${esc(this.query)}"></label>
-            <button class="st-btn" type="button" data-st-reload="1">re-read</button>
+            <button class="st-btn" type="button" data-st-reload="1">다시 읽기</button>
           </div>
         </div>
         <div class="cfg-body">
-          <nav class="cfg-nav" id="cfg-nav" aria-label="Settings sections"></nav>
+          <nav class="cfg-nav" id="cfg-nav" aria-label="설정 섹션"></nav>
           <div class="cfg-main" id="cfg-main"></div>
         </div>
       </div>`;
@@ -916,13 +919,12 @@
        can I not make a 2D image" has two possible answers — no key, or nothing
        running here — and they are one nav row apart on purpose. */
     _local() {
-      return `<div class="cfg-panehead"><h3>Local generators</h3>
-          <span class="cfg-count">no key, no bill</span></div>
-        <p class="cfg-note">Generators you run on your own machine: ComfyUI for
-          2D art, and the local image-to-3D servers. Configure them here, start
-          them yourself, and this page notices — Builders Gate talks to this
-          software, it does not launch it, so nothing here can leave a model
-          loaded in your GPU after you close the page.</p>
+      return `<div class="cfg-panehead"><h3>로컬 생성기</h3>
+          <span class="cfg-count">키 없음, 과금 없음</span></div>
+        <p class="cfg-note">이 기기에서 직접 실행하는 생성기입니다. 2D 아트용
+          ComfyUI와 로컬 이미지-3D 서버를 여기서 설정하고, 실행은 사용자가
+          직접 합니다. Builders Gate는 이 소프트웨어와 대화할 뿐 실행하지
+          않으므로, 페이지를 닫은 뒤 GPU에 모델을 남겨 두지 않습니다.</p>
         <div id="cfg-local-slot"></div>`;
     },
 
@@ -931,13 +933,12 @@
        stored value at all, only "is that CLI installed and is our MCP server
        registered with it, against which interpreter". */
     _agents() {
-      return `<div class="cfg-panehead"><h3>Agent CLIs</h3>
-          <span class="cfg-count">installation &amp; wiring</span></div>
-        <p class="cfg-note">The coding-agent CLIs on this machine, and whether
-          the Builders Gate tools are reachable from <em>your own</em> sessions
-          of them — which is a different question from whether the board can
-          dispatch work, and one that looks fine right up until a tool call
-          fails. Set once; come back when something breaks.</p>
+      return `<div class="cfg-panehead"><h3>에이전트 CLI</h3>
+          <span class="cfg-count">설치 및 연결</span></div>
+        <p class="cfg-note">이 기기의 코딩 에이전트 CLI와, 사용자가 직접 여는
+          세션에서 Builders Gate 도구가 보이는지 확인합니다. 보드가 작업을
+          투입할 수 있는지와는 별개의 문제이며, 도구 호출이 실패하기 전까지는
+          멀쩡해 보일 수 있습니다. 한 번 설정한 뒤 문제가 생기면 다시 확인하세요.</p>
         <div id="cfg-agents-slot"></div>`;
     },
 

@@ -352,6 +352,34 @@ def _quote(part: str) -> str:
     return f'"{part}"' if " " in part else part
 
 
+def _used_for(runner_id: str) -> str:
+    """The human-facing one-line role for a CLI runner.
+
+    Keep this separate from DEFAULT_RUNNER: the Mac setup can pin the
+    brainstorm room, the art seat, and optionally the board dispatch default to
+    Codex without pretending the upstream constant changed.
+    """
+    brainstorm = (os.environ.get("BGATE_BRAINSTORM_RUNNER") or "codex").strip()
+    art = (os.environ.get("BGATE_ART_RUNNER") or "").strip()
+    dispatch = (os.environ.get("BGATE_DISPATCH_RUNNER")
+                or _runners.DEFAULT_RUNNER).strip()
+    bits = []
+    if runner_id == brainstorm:
+        bits.append("The brainstorm room uses this")
+    if runner_id == art:
+        bits.append("the configured art seat uses this")
+    if runner_id == dispatch:
+        bits.append("dispatched board agents use this by default")
+    if bits:
+        suffix = "" if runner_id == dispatch else \
+            ". Other board seats stay on the default runner."
+        return "; ".join(bits) + suffix
+    if runner_id == _runners.DEFAULT_RUNNER and dispatch == _runners.DEFAULT_RUNNER:
+        return ("Dispatched board agents use this by default. Seat-specific "
+                "settings can route a supported seat elsewhere.")
+    return "An alternative runner for dispatched agents."
+
+
 def status() -> list[dict]:
     """Every coding-agent CLI: installed, wired, and what is wrong if anything.
 
@@ -359,6 +387,8 @@ def status() -> list[dict]:
     ``shutil.which`` and a file read.
     """
     found = _runners.available()
+    dispatch_runner = (os.environ.get("BGATE_DISPATCH_RUNNER")
+                       or _runners.DEFAULT_RUNNER).strip()
     rows = []
     for runner_id, runner in _runners.RUNNERS.items():
         one = WIRINGS.get(runner_id)
@@ -379,11 +409,8 @@ def status() -> list[dict]:
             "steerable": bool(runner.steerable),
             "cost_tracked": bool(runner.cost_tracked),
             "requires_git_repo": bool(runner.requires_git_repo),
-            "used_for": ("Dispatched board agents run on this, and it is what "
-                         "the brainstorm room talks to."
-                         if runner_id == _runners.DEFAULT_RUNNER
-                         else "An alternative runner for dispatched agents."),
-            "default_runner": runner_id == _runners.DEFAULT_RUNNER,
+            "used_for": _used_for(runner_id),
+            "default_runner": runner_id == dispatch_runner,
             "mcp": {
                 **entry,
                 **judged,

@@ -145,8 +145,7 @@ def runner_for(root) -> "_runners.Runner":
     name, so a typo in a stored setting falls back to the default rather than
     taking the room down.
     """
-    return _runners.get(str(_setting(root, "brainstorm.runner",
-                                     _runners.DEFAULT_RUNNER)))
+    return _runners.get(str(_setting(root, "brainstorm.runner", "codex")))
 
 
 # The model a brainstorm falls back to when the SETTING CANNOT BE READ. It must
@@ -163,7 +162,7 @@ def runner_for(root) -> "_runners.Runner":
 FALLBACK_MODEL = "sonnet"
 
 
-def _model_for(root) -> Optional[str]:
+def _model_for(root, runner: Optional["_runners.Runner"] = None) -> Optional[str]:
     """The model a brainstorm turn runs on. NAMED, never inherited.
 
     dispatch._model_for exists because nothing passed --model for months and
@@ -172,8 +171,11 @@ def _model_for(root) -> Optional[str]:
     repeat that, so the fallback here is a real model rather than an empty
     string; see FALLBACK_MODEL for the run that proved it matters.
     """
-    chosen = str(_setting(root, "brainstorm.model", FALLBACK_MODEL) or "").strip()
-    return chosen or FALLBACK_MODEL
+    fallback = "gpt-5.6-sol" if getattr(runner, "name", "") == "codex" else FALLBACK_MODEL
+    chosen = str(_setting(root, "brainstorm.model", fallback) or "").strip()
+    if getattr(runner, "name", "") == "codex" and chosen.lower() in ("sonnet", "opus", "haiku"):
+        chosen = fallback
+    return chosen or fallback
 
 
 def _ceiling(root) -> float:
@@ -306,7 +308,7 @@ def available(root) -> dict:
     longer talks to.
     """
     runner = runner_for(root)
-    model = _model_for(root) or "the CLI default"
+    model = _model_for(root, runner) or "the CLI default"
     label = f"{runner.name} · {model}"
     if runner.chat is None:
         return {"available": False, "runner": runner.name, "model": model,
@@ -606,10 +608,13 @@ def _spawn(root, session_id: int, runner: "_runners.Runner", system: str, *,
                               "ts": time.time()}) + "\n").encode("utf-8"))
     handle.flush()
     start_pos = handle.tell()
-    mcp_config = _pad_config(root, session_id) if pads else ""
-    args = runner.chat.build_args(exe, system=system, model=_model_for(root),
+    mcp_config = _pad_config(root, session_id) \
+        if pads and runner.chat.prompt_via == "stream" else ""
+    args = runner.chat.build_args(exe, system=system,
+                                  model=_model_for(root, runner),
                                   max_usd=_ceiling(root),
-                                  mcp_config=mcp_config, resume=resume)
+                                  mcp_config=mcp_config, resume=resume,
+                                  cwd=str(cwd))
     # The environment is the dashboard's MINUS the seat stamps. A thinking
     # session is nobody's seat and holds no work item, and leaving BGATE_SEAT
     # set would let anything that reads it (the hook, an env-sniffing tool a
@@ -630,6 +635,7 @@ def _spawn(root, session_id: int, runner: "_runners.Runner", system: str, *,
              "cli_session_id": str(resume or ""),
              "runner": runner.name, "system": system, "pads": bool(mcp_config),
              "resumed": bool(resume), "tools": [],
+             "prompt_via": runner.chat.prompt_via,
              "started_at": time.monotonic(), "last_at": time.monotonic(),
              "turn_lock": threading.Lock()}
     if register:
@@ -703,6 +709,24 @@ def _as_prompt(delta: list[dict]) -> str:
     return head + str(last.get("content") or "")
 
 
+def _codex_prompt(system: str, turns: list[dict]) -> str:
+    """One complete Codex prompt for the stateless brainstorm path."""
+    lines = [
+        "You are the read-only thinking partner inside Builders Gate.",
+        "Do not edit files, run setup, dispatch work, call MCP tools, or ask for API keys.",
+        "Answer the user's latest message directly and concisely.",
+        "",
+        "SYSTEM INSTRUCTIONS:",
+        str(system or "").strip(),
+        "",
+        "CONVERSATION:",
+    ]
+    for turn in turns:
+        role = "USER" if turn.get("role") == "user" else "ASSISTANT"
+        lines.append(f"{role}: {turn.get('content') or ''}")
+    return "\n".join(lines).strip() + "\n"
+
+
 def _tokens(ev: dict) -> dict:
     """The turn's token usage, in the ledger's four names.
 
@@ -730,6 +754,20 @@ def _model_of(ev: dict) -> str:
         return max(usage, key=lambda k: (usage[k] or {}).get("outputTokens", 0)
                    if isinstance(usage[k], dict) else 0)
     return str(ev.get("model") or "")
+
+
+def _codex_tokens(ev: dict) -> dict:
+    usage = ev.get("usage") if isinstance(ev.get("usage"), dict) else {}
+
+    def n(key: str) -> int:
+        try:
+            return max(0, int(usage.get(key) or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    return {"input": n("input_tokens"), "output": n("output_tokens"),
+            "cache_read": n("cached_input_tokens"),
+            "cache_write": 0}
 
 
 def _read_events(entry: dict) -> list[dict]:
@@ -812,6 +850,25 @@ def _collect(entry: dict, deadline: float) -> dict:
                 for block in (ev.get("message") or {}).get("content") or []:
                     if isinstance(block, dict) and block.get("type") == "text":
                         said.append(str(block.get("text") or ""))
+            elif kind == "thread.started":
+                entry["cli_session_id"] = str(ev.get("thread_id") or "")
+            elif kind == "item.completed":
+                item = ev.get("item") if isinstance(ev.get("item"), dict) else {}
+                if str(item.get("type") or "") == "agent_message":
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        said.append(text)
+            elif kind == "turn.completed":
+                text = "\n".join(s for s in said if s.strip()).strip()
+                if not text:
+                    return {"ok": False, "dead": True,
+                            "error": "the Codex thinking turn ended without an answer"}
+                return {"ok": True, "text": text, "cost": None,
+                        "tokens": _codex_tokens(ev), "model": ""}
+            elif kind in ("turn.failed", "error"):
+                return {"ok": False, "dead": True,
+                        "error": str(ev.get("message") or ev.get("error")
+                                     or "the Codex thinking turn failed")[:400]}
             elif kind == "result":
                 text = str(ev.get("result") or "").strip() or "\n".join(
                     s for s in said if s.strip()).strip()
@@ -991,7 +1048,8 @@ def _start(root, session_id: int, runner, system: str, turns: list[dict], *,
     """
     note = _read_sidecar(root, session_id) if (persist and allow_resume) else {}
     resume, seeded = "", []
-    if note.get("cli_session_id") and note.get("runner") == runner.name \
+    if runner.chat.prompt_via == "stream" \
+            and note.get("cli_session_id") and note.get("runner") == runner.name \
             and note.get("system_sha") == _sha(system):
         at = _resume_point(turns, note.get("last_turn") or {})
         if at is not None:
@@ -1025,8 +1083,13 @@ def _turn(root, key, entry: dict, turns: list[dict], session_id: int,
         if not delta:
             delta = list(turns[-1:]) or [{"role": "user", "content": ""}]
         try:
-            entry["stdin"].write(_user_msg(_as_prompt(delta)).encode("utf-8"))
-            entry["stdin"].flush()
+            if entry.get("prompt_via") == "stdin_once":
+                entry["stdin"].write(_codex_prompt(entry.get("system") or "",
+                                                   list(turns)).encode("utf-8"))
+                entry["stdin"].close()
+            else:
+                entry["stdin"].write(_user_msg(_as_prompt(delta)).encode("utf-8"))
+                entry["stdin"].flush()
         except (OSError, AttributeError, ValueError) as exc:
             _reap(key, entry)
             return ({"ok": False, "dead": True,
@@ -1065,6 +1128,6 @@ def _turn(root, key, entry: dict, turns: list[dict], session_id: int,
                     "system_sha": _sha(entry.get("system") or ""),
                     "last_turn": _mark(turns[-1]),
                     "turns": int(entry["turns"]), "ts": time.time()})
-        if not persist or got.get("dead"):
+        if not persist or got.get("dead") or entry.get("prompt_via") == "stdin_once":
             _reap(key, entry)
     return got, cost

@@ -31,6 +31,18 @@
   "use strict";
 
   const SEATS = ["director", "narrative", "gameplay", "tech", "art", "audio", "qa"];
+  const SEAT_LABELS = {
+    director: "총괄", narrative: "서사", gameplay: "플레이", tech: "기술",
+    art: "아트", audio: "오디오", qa: "검수",
+  };
+  const STATUS_LABELS = {
+    thinking: "생각 중", answered: "응답 완료", queued: "대기", dispatched: "투입됨",
+    running: "실행 중", failed: "실패", done: "완료", passed: "통과", review: "검토",
+    cancelled: "취소됨", stopped: "중지됨", approved: "승인됨", rejected: "반려",
+    live: "실행 중",
+  };
+  const seatLabel = s => SEAT_LABELS[String(s || "").toLowerCase()] || String(s || "");
+  const statusLabel = s => STATUS_LABELS[String(s || "").toLowerCase()] || String(s || "");
   const WS_PATH = "/api/workspace/director/console-graph";
 
   // x is the left edge of a node; the canvas pans, so this is only the FIRST
@@ -175,7 +187,7 @@
     for (let i = list.length - 1; i >= 0; i--) {
       const s = list[i];
       if (s.kind === "tool") return { k: "tool", t: s.name || "tool", h: s.hint || "" };
-      if (s.kind === "steer") return { k: "steer", t: "steered", h: s.text || "" };
+      if (s.kind === "steer") return { k: "steer", t: "조향됨", h: s.text || "" };
       if (s.kind === "result") return { k: "res", t: "", h: s.text || "" };
       if (s.kind === "say" && s.text) return { k: "say", t: "", h: s.text };
     }
@@ -404,8 +416,8 @@
           id, type: "turn", turn: t, title: trunc(t.said || t.title, 42),
           glyph: "»", w: 258, x: p.x, y: p.y,
           accent: "var(--accent)",
-          badge: t.reply && t.reply.running ? "thinking"
-            : (t.status === "done" ? "answered" : t.status),
+          badge: statusLabel(t.reply && t.reply.running ? "thinking"
+            : (t.status === "done" ? "answered" : t.status)),
           running: !!(t.reply && t.reply.running),
           ports: { out: OUT },
         });
@@ -427,9 +439,9 @@
         const p = this.place(id, COL.seat, 20 + i * ROW.seat);
         const c = counts[seat] || { queued: 0, running: 0, done: 0 };
         add({
-          id, type: "seat", seat, title: seat.toUpperCase(), glyph: "▪",
+          id, type: "seat", seat, title: seatLabel(seat), glyph: "▪",
           w: 206, x: p.x, y: p.y, accent: seatColor(seat), counts: c,
-          badge: c.running ? "live" : "", running: !!c.running,
+          badge: c.running ? statusLabel("live") : "", running: !!c.running,
           // The seat boxes double as the canvas's colour key — this hue is that
           // seat, everywhere, for the rest of the graph.
           status: c.running ? "running" : "",
@@ -476,8 +488,8 @@
             : it.status === "done" ? "passed" : "",
           // A collapsed stack says so on the node, so "where did its steps go"
           // has an answer you can see instead of a feature that looks broken.
-          badge: (!rows && stack) ? `${stack} phase${stack === 1 ? "" : "s"}`
-            : running ? "running" : it.status,
+          badge: (!rows && stack) ? `${stack}단계`
+            : running ? statusLabel("running") : statusLabel(it.status),
           step: running ? lastStep(steps[String(it.id)]) : null,
           cost: it.total_cost_usd ? "$" + Number(it.total_cost_usd).toFixed(2) : "",
           ports: { in: IN, out: OUT },
@@ -673,15 +685,15 @@
     body(n) {
       if (n.type === "turn") {
         const r = (n.turn && n.turn.reply) || {};
-        const line = r.running ? (r.thinking || "thinking…") : (r.text || "no answer yet");
+        const line = r.running ? (r.thinking || "생각 중...") : (r.text || "아직 답변 없음");
         return `<div class="cg-said">${esc(trunc(n.turn.said || "", 150))}</div>
           <div class="cg-line ${r.running ? "live" : ""}">${esc(trunc(line, 120))}</div>`;
       }
       if (n.type === "seat") {
         const c = n.counts || {};
         return `<div class="cg-meta">
-          <span class="${c.running ? "on" : "off"}">${c.running ? "● " + c.running + " working" : "idle"}</span>
-          <span>${c.queued || 0} queued</span></div>`;
+          <span class="${c.running ? "on" : "off"}">${c.running ? "● 실행 중 " + c.running + "개" : "대기 없음"}</span>
+          <span>큐 ${c.queued || 0}개</span></div>`;
       }
       if (n.type === "phase") {
         const ph = n.phase || {};
@@ -696,12 +708,12 @@
         // red, and anyone at 40% zoom on a canvas with three runs on it.
         return `<div class="cg-meta">
             ${n.seat ? `<span class="cg-owner" style="color:${seatColor(n.seat)}">${
-              esc(n.seat)} · #${Number(n.itemId)}</span>` : ""}
-            <span>${(ph.tools || []).length} tools</span>
-            <span>${ph.results || 0} results</span>
-            ${(ph.seen || []).length ? `<span>${ph.seen.length} seen</span>` : ""}
-            ${(ph.read || []).length ? `<span>${ph.read.length} files</span>` : ""}
-            ${ph.steers ? `<span class="cg-warn">${ph.steers} steer</span>` : ""}
+              esc(seatLabel(n.seat))} · #${Number(n.itemId)}</span>` : ""}
+            <span>도구 ${(ph.tools || []).length}개</span>
+            <span>결과 ${ph.results || 0}개</span>
+            ${(ph.seen || []).length ? `<span>본 항목 ${ph.seen.length}개</span>` : ""}
+            ${(ph.read || []).length ? `<span>파일 ${ph.read.length}개</span>` : ""}
+            ${ph.steers ? `<span class="cg-warn">조향 ${ph.steers}개</span>` : ""}
           </div>
           ${strip ? `<div class="cg-strip">${strip}</div>` : ""}
           <div class="cg-line ${ph.state === "running" ? "live" : ""}">${
@@ -713,26 +725,26 @@
         // A parked item is not a claim worth a glance, it is a stopped chain.
         // Both used to read "your call", which made the one that is actually
         // holding work up indistinguishable from the ten that are not.
-        const what = g.kind === "art" ? "a human decides - approve or reject"
+        const what = g.kind === "art" ? "사용자가 승인 또는 반려를 결정합니다"
           : g.kind === "signoff" ? (g.parked
-              ? "held in review - the chain behind it waits on you"
-              : "the agent says this is done - your call")
-          : g.kind === "escalation" ? "QA loop broken - you arbitrate"
-          : "verifying the claim before it counts";
-        return `<div class="cg-meta"><span>${esc(g.seat || "")}</span>
-          <span>${esc(g.status || "")}</span></div>
+              ? "검토 중입니다. 뒤 작업은 사용자 결정을 기다립니다"
+              : "에이전트는 끝났다고 보고했습니다. 사용자가 결정합니다")
+          : g.kind === "escalation" ? "검수 반복이 막혔습니다. 사용자가 판정합니다"
+          : "완료로 인정하기 전에 주장을 확인하는 중입니다";
+        return `<div class="cg-meta"><span>${esc(seatLabel(g.seat))}</span>
+          <span>${esc(statusLabel(g.status))}</span></div>
           <div class="cg-line">${esc(what)}</div>`;
       }
       const it = n.item || {};
       const step = n.step;
       const line = step
         ? (step.k === "tool" ? `<b>${esc(step.t)}</b> ${esc(trunc(step.h, 60))}`
-          : step.k === "steer" ? `steered · ${esc(trunc(step.h, 60))}`
+          : step.k === "steer" ? `조향됨 · ${esc(trunc(step.h, 60))}`
           : esc(trunc(step.h, 80)))
         : esc(trunc(it.result || it.brief_preview || "", 80));
       // The seat rides on the task now that it has no node of its own.
       return `<div class="cg-meta">
-          <span class="cg-chip" style="--sc:${seatColor(it.seat)}">${esc(it.seat || "")}</span>
+          <span class="cg-chip" style="--sc:${seatColor(it.seat)}">${esc(seatLabel(it.seat))}</span>
           <span>#${esc(it.id)}</span>
           <span>${esc(it.source || "")}</span></div>
         <div class="cg-line ${n.running ? "live" : ""}">${line || "-"}</div>`;
@@ -820,15 +832,15 @@
              <span class="cg-row-s">${live.has(Number(i.id)) ? "▶" : i.status === "done" ? "✓" : "▷"}</span>
              <span class="cg-row-t">${esc(i.title)}</span>
              <span class="cg-row-m">#${i.id}</span></button>`).join("")
-          || `<div class="cg-empty">nothing routed here</div>`;
+          || `<div class="cg-empty">이 좌석에 배정된 작업이 없습니다</div>`;
         const c = n.counts || {};
-        return head("Seat", n.seat)
-          + `<div class="cg-kv"><span>working</span><span>${c.running || 0}</span></div>`
-          + `<div class="cg-kv"><span>queued</span><span>${c.queued || 0}</span></div>`
-          + `<div class="cg-kv"><span>done</span><span>${c.done || 0}</span></div>`
-          + `<div class="cg-sec">routed work</div><div class="cg-rows">${rows}</div>`
+        return head("좌석", seatLabel(n.seat))
+          + `<div class="cg-kv"><span>실행 중</span><span>${c.running || 0}</span></div>`
+          + `<div class="cg-kv"><span>대기</span><span>${c.queued || 0}</span></div>`
+          + `<div class="cg-kv"><span>완료</span><span>${c.done || 0}</span></div>`
+          + `<div class="cg-sec">배정된 작업</div><div class="cg-rows">${rows}</div>`
           + `<div class="cg-acts"><button class="qbtn small ghost" data-act="workspace"
-               data-id="${esc(n.seat)}">open ${esc(n.seat)} workspace</button></div>`;
+               data-id="${esc(n.seat)}">${esc(seatLabel(n.seat))} 작업실 열기</button></div>`;
       }
 
       if (n.type === "turn") {
@@ -838,17 +850,17 @@
           return Number(p[i.id] || p[String(i.id)] || 0) === Number(t.id);
         });
         const rows = kids.map(i => `<button class="cg-row" data-act="goto" data-id="task_${i.id}">
-            <span class="cg-row-s" style="color:${seatColor(i.seat)}">${esc(i.seat)}</span>
+            <span class="cg-row-s" style="color:${seatColor(i.seat)}">${esc(seatLabel(i.seat))}</span>
             <span class="cg-row-t">${esc(i.title)}</span>
             <span class="cg-row-m">#${i.id}</span></button>`).join("")
-          || `<div class="cg-empty">nothing delegated from this message yet</div>`;
-        return head("You said", "#" + t.id)
+          || `<div class="cg-empty">이 메시지에서 아직 위임된 작업이 없습니다</div>`;
+        return head("사용자 발화", "#" + t.id)
           + `<div class="cg-quote">${esc(t.said || t.title)}</div>`
-          + `<div class="cg-sec">director</div>`
-          + `<div class="cg-answer ${r.running ? "live" : ""}">${esc(r.text || r.thinking || (r.running ? "working…" : "no answer yet"))}</div>`
-          + `<div class="cg-sec">delegated</div><div class="cg-rows">${rows}</div>`
-          + `<div class="cg-acts"><button class="qbtn small ghost" data-act="log" data-id="${t.id}">full log</button>`
-          + (r.running ? `<button class="qbtn small ghost" data-act="stop" data-id="${t.id}">stop</button>` : "")
+          + `<div class="cg-sec">총괄</div>`
+          + `<div class="cg-answer ${r.running ? "live" : ""}">${esc(r.text || r.thinking || (r.running ? "작업 중..." : "아직 답변 없음"))}</div>`
+          + `<div class="cg-sec">위임됨</div><div class="cg-rows">${rows}</div>`
+          + `<div class="cg-acts"><button class="qbtn small ghost" data-act="log" data-id="${t.id}">전체 로그</button>`
+          + (r.running ? `<button class="qbtn small ghost" data-act="stop" data-id="${t.id}">중지</button>` : "")
           + `</div>`;
       }
 
@@ -861,15 +873,14 @@
         // the honest version of the empty state it would otherwise render.
         const dropped = Number(ph.steps_dropped || 0);
         const feed = (ph.steps || []).map(s => stepRow(s, n.itemId)).join("")
-          + (dropped ? `<div class="cg-empty">${dropped} earlier step${
-              dropped === 1 ? "" : "s"} in this pocket — open the full log</div>` : "")
-          || `<div class="cg-empty">nothing recorded in this pocket</div>`;
+          + (dropped ? `<div class="cg-empty">이 포켓의 이전 단계 ${dropped}개 - 전체 로그를 여세요</div>` : "")
+          || `<div class="cg-empty">이 포켓에는 기록된 내용이 없습니다</div>`;
         // What it had in front of it. First, because when an agent is working
         // the question is not "what did it file" — it is "what is it looking
         // at", and that was the one thing this panel could not answer.
         const seen = (ph.seen || []);
         const looking = seen.length
-          ? `<div class="cg-sec">looking at · ${seen.length}</div>`
+          ? `<div class="cg-sec">보고 있는 항목 · ${seen.length}</div>`
             + fileGrid(seen.map(rel => ({ path: rel })), n.itemId)
           : "";
         // The source, scenes and data it read. Same grid, different question:
@@ -877,47 +888,45 @@
         // openable rather than quoted.
         const read = (ph.read || []);
         const reading = read.length
-          ? `<div class="cg-sec">files it read · ${read.length}</div>`
+          ? `<div class="cg-sec">읽은 파일 · ${read.length}</div>`
             + fileGrid(read.map(rel => ({ path: rel })), n.itemId)
           : "";
         const made = arts.length
-          ? `<div class="cg-sec">made here · ${arts.length}</div>`
+          ? `<div class="cg-sec">여기서 만든 항목 · ${arts.length}</div>`
             + fileGrid(arts, n.itemId, true)
           : "";
-        return head(`Phase ${ph.n} · item #${n.itemId}`, ph.title || "working")
-          + `<div class="cg-kv"><span>state</span><span>${esc(ph.state || "")}</span></div>`
-          + `<div class="cg-kv"><span>tools</span><span>${esc((ph.tools || []).join(", ")) || "-"}</span></div>`
+        return head(`단계 ${ph.n} · 항목 #${n.itemId}`, ph.title || "작업 중")
+          + `<div class="cg-kv"><span>상태</span><span>${esc(statusLabel(ph.state) || ph.state || "")}</span></div>`
+          + `<div class="cg-kv"><span>도구</span><span>${esc((ph.tools || []).join(", ")) || "-"}</span></div>`
           + (ph.error ? `<div class="cg-note bad">${esc(ph.error)}</div>` : "")
           + looking
           + reading
           + made
-          + `<div class="cg-sec">what happened</div><div class="cg-feed">${feed}</div>`
+          + `<div class="cg-sec">진행 내용</div><div class="cg-feed">${feed}</div>`
           + `<div class="cg-acts">
-               <button class="qbtn small ghost" data-act="goto" data-id="task_${n.itemId}">the task</button>
-               <button class="qbtn small ghost" data-act="log" data-id="${n.itemId}">full log</button>
+               <button class="qbtn small ghost" data-act="goto" data-id="task_${n.itemId}">작업 항목</button>
+               <button class="qbtn small ghost" data-act="log" data-id="${n.itemId}">전체 로그</button>
              </div>`;
       }
 
       if (n.type === "gate") {
         const g = n.gate || {};
         if (g.kind === "signoff") {
-          return head(g.parked ? "Sign-off · held" : "Sign-off", g.title)
-            + `<div class="cg-kv"><span>seat</span><span style="color:${seatColor(g.seat)}">${esc(g.seat)}</span></div>`
-            + `<div class="cg-kv"><span>item</span><span>#${g.item_id}</span></div>`
-            + `<div class="cg-sec">what it says it did</div>`
-            + `<div class="cg-answer">${esc(g.result || "(no result note)")}</div>`
+          return head(g.parked ? "승인 대기 · 보류" : "승인 대기", g.title)
+            + `<div class="cg-kv"><span>좌석</span><span style="color:${seatColor(g.seat)}">${esc(seatLabel(g.seat))}</span></div>`
+            + `<div class="cg-kv"><span>항목</span><span>#${g.item_id}</span></div>`
+            + `<div class="cg-sec">에이전트 보고</div>`
+            + `<div class="cg-answer">${esc(g.result || "(결과 메모 없음)")}</div>`
             + (g.parked
-              ? `<div class="cg-note">This item is PARKED IN REVIEW under the
-                   builder's gate — it is not closed, and anything chained behind
-                   it will not start until you accept. Send it back and the reason
-                   is appended to the brief for the next round.</div>`
-              : `<div class="cg-note">'Done' is the agent's claim. Accept it and the
-                   gate clears; send it back and the reason is appended to the brief
-                   for whoever picks it up next.</div>`)
+              ? `<div class="cg-note">이 항목은 게이트 아래 검토 보류 상태입니다.
+                   아직 닫히지 않았고, 뒤에 연결된 작업은 사용자가 승인할 때까지
+                   시작하지 않습니다. 돌려보내면 사유가 다음 회차 brief에 붙습니다.</div>`
+              : `<div class="cg-note">'완료'는 에이전트의 주장입니다. 승인하면
+                   게이트가 열리고, 돌려보내면 사유가 다음 담당자 brief에 붙습니다.</div>`)
             + `<div class="cg-acts">
-                 <button class="qbtn small" data-act="accept" data-id="${g.item_id}">accept</button>
-                 <button class="qbtn small ghost" data-act="sendback" data-id="${g.item_id}">send back</button>
-                 <button class="qbtn small ghost" data-act="log" data-id="${g.item_id}">log</button>
+                 <button class="qbtn small" data-act="accept" data-id="${g.item_id}">승인</button>
+                 <button class="qbtn small ghost" data-act="sendback" data-id="${g.item_id}">돌려보내기</button>
+                 <button class="qbtn small ghost" data-act="log" data-id="${g.item_id}">로그</button>
                </div>`;
         }
         if (g.kind === "art") {
@@ -925,23 +934,23 @@
             ? `<img class="cg-shot" src="/api/preview?rel=${encodeURIComponent(g.path)}" alt="">` : "";
           return head("Approval gate", g.title)
             + img
-            + `<div class="cg-note">Only a human can approve a candidate. The agent that made it cannot.</div>`
+            + `<div class="cg-note">후보 승인은 사용자만 할 수 있습니다. 만든 에이전트는 승인할 수 없습니다.</div>`
             + `<div class="cg-acts">
-                 <button class="qbtn small" data-act="approve" data-id="${g.artifact_id}">approve</button>
-                 <button class="qbtn small ghost" data-act="reject" data-id="${g.artifact_id}">reject</button>
-                 <button class="qbtn small ghost" data-act="assets" data-id="">open in assets</button></div>`;
+                 <button class="qbtn small" data-act="approve" data-id="${g.artifact_id}">승인</button>
+                 <button class="qbtn small ghost" data-act="reject" data-id="${g.artifact_id}">반려</button>
+                 <button class="qbtn small ghost" data-act="assets" data-id="">에셋에서 열기</button></div>`;
         }
-        return head(g.kind === "escalation" ? "Escalation" : "QA gate", g.title)
-          + `<div class="cg-kv"><span>seat</span><span>${esc(g.seat)}</span></div>`
-          + `<div class="cg-kv"><span>status</span><span>${esc(g.status)}</span></div>`
-          + (g.over_item_id ? `<div class="cg-kv"><span>over</span><span>#${g.over_item_id}</span></div>` : "")
+        return head(g.kind === "escalation" ? "상위 판정" : "검수 게이트", g.title)
+          + `<div class="cg-kv"><span>좌석</span><span>${esc(seatLabel(g.seat))}</span></div>`
+          + `<div class="cg-kv"><span>상태</span><span>${esc(statusLabel(g.status))}</span></div>`
+          + (g.over_item_id ? `<div class="cg-kv"><span>대상</span><span>#${g.over_item_id}</span></div>` : "")
           + `<div class="cg-note">${g.kind === "escalation"
-              ? "Deliberately not dispatched - three rounds failed and another agent will not settle it."
-              : "An agent is checking another agent's claim before it counts as done."}</div>`
+              ? "일부러 투입하지 않았습니다. 세 차례 실패해 다른 에이전트로는 정리되지 않습니다."
+              : "완료로 인정하기 전에 다른 에이전트의 주장을 검수 중입니다."}</div>`
           + `<div class="cg-acts">
-               ${g.status === "queued" ? `<button class="qbtn small" data-act="dispatch" data-id="${g.item_id}">dispatch</button>` : ""}
-               <button class="qbtn small ghost" data-act="log" data-id="${g.item_id}">log</button>
-               ${g.over_item_id ? `<button class="qbtn small ghost" data-act="goto" data-id="task_${g.over_item_id}">the item it gates</button>` : ""}
+               ${g.status === "queued" ? `<button class="qbtn small" data-act="dispatch" data-id="${g.item_id}">투입</button>` : ""}
+               <button class="qbtn small ghost" data-act="log" data-id="${g.item_id}">로그</button>
+               ${g.over_item_id ? `<button class="qbtn small ghost" data-act="goto" data-id="task_${g.over_item_id}">검수 대상</button>` : ""}
              </div>`;
       }
 
@@ -952,7 +961,7 @@
       // steps carry their pictures — the flat `steps` map is only the summary.
       const tail = (runPhases.slice(-1)[0] || {}).steps || steps;
       const feed = tail.slice(-8).map(s => stepRow(s, it.id)).join("")
-        || `<div class="cg-empty">${n.running ? "warming up…" : "no live steps"}</div>`;
+        || `<div class="cg-empty">${n.running ? "준비 중..." : "실시간 단계 없음"}</div>`;
 
       // Everything this run has had in front of it, newest phase first. The
       // whole complaint this answers: watching an agent "work" without knowing
@@ -968,12 +977,12 @@
       };
       const eyes = newestFirst("seen", 6);
       const eyesHTML = eyes.length
-        ? `<div class="cg-sec">looking at</div>
+        ? `<div class="cg-sec">보고 있는 항목</div>
            <div class="cg-strip big">${eyes.map(rel =>
              `<a class="cg-eye" href="/api/preview?rel=${encodeURIComponent(rel)}"
                  target="_blank" rel="noopener"
                  data-peek="${esc(rel)}" data-peek-item="${Number(it.id)}"
-                 title="${esc(rel)} - click to expand">${thumb({ path: rel }, "cg-thumb", it.id)}</a>`
+                 title="${esc(rel)} - 클릭해 펼치기">${thumb({ path: rel }, "cg-thumb", it.id)}</a>`
            ).join("")}</div>`
         : "";
       // The files the run is working IN, and — because this is the task rail and
@@ -981,35 +990,35 @@
       // opens straight onto its diff.
       const touched = newestFirst("read", 8);
       const readHTML = touched.length
-        ? `<div class="cg-sec">files it read</div>
+        ? `<div class="cg-sec">읽은 파일</div>
            <div class="cg-fchips">${touched.map(rel =>
              `<button class="cg-fchip" type="button" data-peek="${esc(rel)}"
                       data-peek-item="${Number(it.id)}" data-peek-view="diff"
-                      title="${esc(rel)} - opens the diff">${esc(rel.split("/").pop())}</button>`
+                      title="${esc(rel)} - diff 열기">${esc(rel.split("/").pop())}</button>`
            ).join("")}</div>`
         : "";
 
-      return head("Work item", "#" + it.id)
+      return head("작업 항목", "#" + it.id)
         + `<div class="cg-dt2">${esc(it.title)}</div>`
-        + `<div class="cg-kv"><span>seat</span><span style="color:${seatColor(it.seat)}">${esc(it.seat)}</span></div>`
-        + `<div class="cg-kv"><span>status</span><span>${n.running ? "running" : esc(it.status)}</span></div>`
-        + `<div class="cg-kv"><span>source</span><span>${esc(it.source || "manual")}</span></div>`
-        + (it.attempts ? `<div class="cg-kv"><span>rounds</span><span>${it.attempts}</span></div>` : "")
-        + (it.total_cost_usd ? `<div class="cg-kv"><span>cost</span><span>$${Number(it.total_cost_usd).toFixed(3)}</span></div>` : "")
+        + `<div class="cg-kv"><span>좌석</span><span style="color:${seatColor(it.seat)}">${esc(seatLabel(it.seat))}</span></div>`
+        + `<div class="cg-kv"><span>상태</span><span>${n.running ? statusLabel("running") : esc(statusLabel(it.status))}</span></div>`
+        + `<div class="cg-kv"><span>출처</span><span>${esc(it.source || "수동")}</span></div>`
+        + (it.attempts ? `<div class="cg-kv"><span>회차</span><span>${it.attempts}</span></div>` : "")
+        + (it.total_cost_usd ? `<div class="cg-kv"><span>비용</span><span>$${Number(it.total_cost_usd).toFixed(3)}</span></div>` : "")
         + (it.brief_preview ? `<div class="cg-note">${esc(it.brief_preview)}${it.brief_len > 240 ? "…" : ""}</div>` : "")
-        + (it.result ? `<div class="cg-sec">result</div><div class="cg-answer">${esc(it.result)}</div>` : "")
+        + (it.result ? `<div class="cg-sec">결과</div><div class="cg-answer">${esc(it.result)}</div>` : "")
         + eyesHTML
-        + `<div class="cg-sec">live steps</div><div class="cg-feed">${feed}</div>`
+        + `<div class="cg-sec">실시간 단계</div><div class="cg-feed">${feed}</div>`
         + `<div class="cg-acts">
-             ${it.status === "queued" ? `<button class="qbtn small" data-act="dispatch" data-id="${it.id}">dispatch</button>` : ""}
-             ${n.running ? `<button class="qbtn small ghost" data-act="stop" data-id="${it.id}">stop</button>` : ""}
-             <button class="qbtn small ghost" data-act="log" data-id="${it.id}">full log</button>
-             <button class="qbtn small ghost" data-act="delegate" data-id="${it.id}">delegate</button>
+             ${it.status === "queued" ? `<button class="qbtn small" data-act="dispatch" data-id="${it.id}">투입</button>` : ""}
+             ${n.running ? `<button class="qbtn small ghost" data-act="stop" data-id="${it.id}">중지</button>` : ""}
+             <button class="qbtn small ghost" data-act="log" data-id="${it.id}">전체 로그</button>
+             <button class="qbtn small ghost" data-act="delegate" data-id="${it.id}">위임</button>
            </div>`
         + (n.running ? `<div class="cg-steer">
-             <input class="cg-steer-in steerin" data-id="${it.id}" placeholder="steer this agent…">
-             <button class="qbtn small" data-act="steer" data-id="${it.id}">steer</button></div>
-           <button class="cg-link" data-act="target" data-id="${it.id}">…or aim the chat box at this agent</button>` : "");
+             <input class="cg-steer-in steerin" data-id="${it.id}" placeholder="이 에이전트 조향...">
+             <button class="qbtn small" data-act="steer" data-id="${it.id}">조향</button></div>
+           <button class="cg-link" data-act="target" data-id="${it.id}">...또는 대화창을 이 에이전트로 향하게 하기</button>` : "");
     },
 
     async act(what, id, btn) {
@@ -1039,41 +1048,41 @@
           return;
         }
         if (what === "dispatch") {
-          const r = await M(`/api/queue/${id}/dispatch`, { ok: `dispatched #${id}`, button: btn });
+          const r = await M(`/api/queue/${id}/dispatch`, { ok: `#${id} 투입됨`, button: btn });
           if (!r.ok) return;
         } else if (what === "stop") {
-          const r = await M(`/api/queue/${id}/stop`, { ok: `stopped #${id}`, button: btn });
+          const r = await M(`/api/queue/${id}/stop`, { ok: `#${id} 중지됨`, button: btn });
           if (!r.ok) return;
         } else if (what === "delegate") {
-          const r = await M("/api/orchestrator/delegate", { body: { item_id: Number(id) }, ok: "director is splitting it" });
+          const r = await M("/api/orchestrator/delegate", { body: { item_id: Number(id) }, ok: "총괄이 나누는 중" });
           if (!r.ok) return;
         } else if (what === "accept") {
           const r = await M("/api/console/signoff",
                             { body: { item_id: Number(id), verdict: "accept" },
-                              ok: `#${id} accepted`, button: btn });
+                              ok: `#${id} 승인됨`, button: btn });
           if (!r.ok) return;
         } else if (what === "sendback") {
           const reason = await window.askText({
-            title: `Send #${id} back`,
-            body: "What is wrong with it? This is appended to the brief, so the "
-                + "next agent on this item reads exactly what you wrote.",
-            placeholder: "the idle is off-model against the pinned ref - redo it…",
-            ok: "send it back", required: true,
+            title: `#${id} 돌려보내기`,
+            body: "무엇이 문제인지 적어 주세요. 이 내용은 brief에 붙어서 다음 "
+                + "에이전트가 그대로 읽습니다.",
+            placeholder: "고정된 참고 이미지와 대기 애니메이션이 다릅니다. 다시 작업하세요...",
+            ok: "돌려보내기", required: true,
           });
           if (reason == null) return;
           const r = await M("/api/console/signoff",
                             { body: { item_id: Number(id), verdict: "reopen", reason },
-                              ok: `#${id} sent back` });
+                              ok: `#${id} 돌려보냄` });
           if (!r.ok) return;
         } else if (what === "approve" || what === "reject") {
           const r = await M(`/api/artifacts/${id}/review`,
                             { body: { status: what === "approve" ? "approved" : "rejected" },
-                              ok: what === "approve" ? "approved" : "rejected", button: btn });
+                              ok: what === "approve" ? "승인됨" : "반려됨", button: btn });
           if (!r.ok) return;
         }
         if (window.AgentsConsole && AgentsConsole.poll) AgentsConsole.poll();
       } catch (e) {
-        if (window.toast) toast("action failed");
+        if (window.toast) toast("동작 실패");
       }
     },
 
