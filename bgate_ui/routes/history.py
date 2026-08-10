@@ -135,31 +135,30 @@ def _gate_verdict(gate_row) -> dict:
         passed = match.group(1).upper() == "PASS"
         return {**base,
                 "kind": "pass" if passed else "fail",
-                "label": "PASS" if passed else "FAIL",
-                "short": ("an independent QA agent checked it"
-                          if passed else "an independent QA agent rejected it"),
-                "why": ("an independent QA agent verified the claim against the "
-                        "real artefact and it held"
+                "label": "통과" if passed else "반려",
+                "short": ("독립 QA 에이전트가 확인했습니다"
+                          if passed else "독립 QA 에이전트가 반려했습니다"),
+                "why": ("독립 QA 에이전트가 실제 산출물과 완료 주장을 대조했고 "
+                        "문제가 없었습니다"
                         if passed else
-                        "an independent QA agent rejected the claim and "
-                        "reopened the item with a nitpick list")}
+                        "독립 QA 에이전트가 완료 주장을 반려하고 수정 목록을 붙여 "
+                        "항목을 다시 열었습니다")}
     if gate_row["status"] == "failed":
-        return {**base, "kind": "error", "label": "gate errored",
-                "short": "the QA run itself died",
-                "why": "the QA run itself died — nothing was decided"}
+        return {**base, "kind": "error", "label": "검증 오류",
+                "short": "QA 실행 자체가 실패했습니다",
+                "why": "QA 실행 자체가 실패해서 아무 판정도 남기지 못했습니다"}
     if gate_row["status"] == "cancelled":
-        return {**base, "kind": "none", "label": "gate cancelled",
-                "short": "the QA round never ran to a decision",
-                "why": "the QA round was cancelled before it decided anything"}
+        return {**base, "kind": "none", "label": "검증 취소",
+                "short": "QA 라운드가 판정 전에 취소되었습니다",
+                "why": "QA 라운드가 어떤 판정도 내리기 전에 취소되었습니다"}
     if gate_row["status"] == "done":
-        return {**base, "kind": "unknown", "label": "no verdict written",
-                "short": "the gate run decided nothing",
-                "why": "the QA run finished without writing a VERDICT line — "
-                       "nothing was decided here, and calling that a pass "
-                       "would be a gate that does not gate"}
-    return {**base, "kind": "reviewing", "label": "under review",
-            "short": "a QA agent is checking this now",
-            "why": "a QA agent is checking this now"}
+        return {**base, "kind": "unknown", "label": "판정 없음",
+                "short": "검증 실행이 아무 판정도 남기지 않았습니다",
+                "why": "QA 실행이 판정 줄을 쓰지 않고 끝났습니다. 여기서는 통과로 "
+                       "볼 근거가 없습니다"}
+    return {**base, "kind": "reviewing", "label": "검토 중",
+            "short": "QA 에이전트가 확인 중입니다",
+            "why": "QA 에이전트가 지금 확인 중입니다"}
 
 
 def _ungated(row) -> dict:
@@ -175,27 +174,26 @@ def _ungated(row) -> dict:
     closed_by = str(row["closed_by"] or "")
     stub = {"rounds": 0, "escalated": False, "gate_item": None, "detail": ""}
     if str(row["approved_by"] or ""):
-        return {**stub, "kind": "approved", "label": "approved",
-                "short": f"signed off by {row['approved_by']}",
-                "why": f"the builder's gate: {row['approved_by']} approved this "
-                       "by hand before it counted as done"}
+        return {**stub, "kind": "approved", "label": "승인됨",
+                "short": f"{row['approved_by']} 사용자가 승인했습니다",
+                "why": f"완료로 인정되기 전에 {row['approved_by']} 사용자가 "
+                       "직접 승인했습니다"}
     if status == "failed":
-        return {**stub, "kind": "na", "label": "not verified",
-                "short": "the run failed — nothing to check",
-                "why": "the run failed — there was no deliverable to check"}
+        return {**stub, "kind": "na", "label": "검증 못 함",
+                "short": "실행이 실패해서 확인할 산출물이 없습니다",
+                "why": "실행이 실패했고 검증할 산출물이 남지 않았습니다"}
     if status == "cancelled":
-        return {**stub, "kind": "na", "label": "not verified",
-                "short": "cancelled before it produced anything",
-                "why": "the item was cancelled before it produced anything"}
+        return {**stub, "kind": "na", "label": "검증 못 함",
+                "short": "산출물이 나오기 전에 취소되었습니다",
+                "why": "항목이 산출물을 만들기 전에 취소되었습니다"}
     if status in ("queued", "dispatched"):
         # Only reachable through the log endpoint: an item that WAS in history
         # and has since been reopened. Saying "closed on the agent's own word"
         # about work that is running again would be wrong in both directions.
-        return {**stub, "kind": "reviewing", "label": "back in the queue",
-                "short": "reopened — this round is not finished",
-                "why": "this item was reopened after it closed, so the log "
-                       "below is the previous round and nothing has been "
-                       "judged yet"}
+        return {**stub, "kind": "reviewing", "label": "큐로 돌아감",
+                "short": "다시 열린 항목이라 이번 라운드가 아직 끝나지 않았습니다",
+                "why": "이 항목은 닫힌 뒤 다시 열렸습니다. 아래 로그는 이전 "
+                       "라운드이며, 이번 라운드는 아직 판정되지 않았습니다"}
     if status == "review":
         return {**stub, "kind": "awaiting", "label": "awaiting you",
                 "short": "the builder's gate is holding this",

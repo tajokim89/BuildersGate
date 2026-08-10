@@ -433,15 +433,16 @@ def dispatcher_live(root: str | os.PathLike[str]) -> bool:
     A queued row on a dead board looks exactly like delegated work and is not —
     the trap the director protocol already warns about. The router files a
     debrief only when it can see a live dispatcher, and says so in the
-    notification when it cannot. In practice that means the claude CLI is
-    resolvable: this runs inside the dashboard, which is the process that owns
-    dispatch, so the remaining way for a debrief to be undispatchable is a
-    missing CLI.
+    notification when it cannot. In practice that means the configured runner is
+    resolvable inside this dashboard process.
     """
     try:
         from bgate_ui import dispatch as _dispatch
 
-        return bool(_dispatch.find_claude())
+        from bgate_ui import runners as _runners
+
+        runner = _runners.get("")
+        return bool(runner.find())
     except Exception:
         return False
 
@@ -737,13 +738,12 @@ def _branch_debrief(ev: dict, item: dict, settings: dict, board: dict,
             "no live dispatcher, so no debrief was filed",
             cause="no_dispatcher", count=1, refs=[str(subject_id)],
             kinds=[str(ev.get("kind") or "")],
-            summary=(f"#{subject_id} [{subject.get('seat') or ''}] finished and "
-                     "nothing follows it, but there is no live dispatcher — no "
-                     "debrief was filed"),
-            detail=("A queued row on a dead board looks like delegated work and "
-                    "is not, so none was created. Start `bgate serve` (and check "
-                    "the claude CLI is on PATH) and the next completion will "
-                    "debrief."))], filed)
+            summary=(f"#{subject_id} [{subject.get('seat') or ''}] 완료 뒤 "
+                     "이어질 작업이 없지만 실행 가능한 디스패처가 없어 디브리프를 "
+                     "등록하지 않았습니다"),
+            detail=("죽은 보드에 남은 큐 항목은 위임된 작업처럼 보일 수 있어 "
+                    "새 항목을 만들지 않았습니다. `bgate serve`를 시작하고 Codex "
+                    "CLI가 PATH에 있는지 확인하면 다음 완료 때 디브리프가 등록됩니다."))], filed)
     return ([_action(
         "debrief", 5, ev, f"debrief:{guard_ref}",
         f"debriefing the director on #{subject_id}",

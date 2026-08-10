@@ -15,7 +15,7 @@ The only things it puts on disk are additive:
                    the README tells you to keep your API key in .env next to
                    the game; without the ignore rule, following the README
                    commits the key)
-  CLAUDE.md        appended to, same marked-block trick
+  AGENTS.md        appended to, same marked-block trick
 
 Both marked blocks make the whole operation idempotent: run adopt twice and the
 second run finds its own marker and rewrites the block in place instead of
@@ -34,7 +34,7 @@ from .scaffold import TEMPLATES_DIR
 # Where the appended blocks start and end. Anything between the two lines is
 # ours to rewrite; anything outside them is the user's and is never touched.
 # Two flavours because the marker has to be a COMMENT in the host file: a `#`
-# line in a CLAUDE.md is an H1 heading, and an HTML comment in a .gitignore is
+# line in an AGENTS.md is an H1 heading, and an HTML comment in a .gitignore is
 # a pattern that matches nothing but reads as garbage.
 MARK_START = "# --- Builders Gate (managed block — edits here may be rewritten) ---"
 MARK_END = "# --- end Builders Gate ---"
@@ -218,20 +218,25 @@ def stamp_gitignore(directory: str | os.PathLike[str]) -> dict:
     return _merge_block(Path(directory) / ".gitignore", body)
 
 
-def stamp_claude_md(directory: str | os.PathLike[str], name: str = "") -> dict:
-    """Merge the Builders Gate briefing into <dir>/CLAUDE.md.
+def stamp_agents_md(directory: str | os.PathLike[str], name: str = "") -> dict:
+    """Merge the Builders Gate briefing into <dir>/AGENTS.md.
 
     Same marked-block discipline as .gitignore, for the same reason: a project
-    that already has a CLAUDE.md has one because someone wrote it.
+    that already has an AGENTS.md has one because someone wrote it.
     """
-    source = TEMPLATES_DIR / "shared" / "CLAUDE.md"
+    source = TEMPLATES_DIR / "shared" / "AGENTS.md"
     if not source.is_file():
         return {"path": "", "action": "skipped",
                 "error": f"template missing: {source}"}
     body = source.read_text(encoding="utf-8")
     body = body.replace("__PROJECT_NAME__", name or Path(directory).name)
-    return _merge_block(Path(directory) / "CLAUDE.md", body,
+    return _merge_block(Path(directory) / "AGENTS.md", body,
                         MD_MARK_START, MD_MARK_END)
+
+
+def stamp_claude_md(directory: str | os.PathLike[str], name: str = "") -> dict:
+    """Compatibility wrapper for callers that still use the old function name."""
+    return stamp_agents_md(directory, name)
 
 
 def would_clobber(directory: str | os.PathLike[str]) -> list[str]:
@@ -246,7 +251,7 @@ def would_clobber(directory: str | os.PathLike[str]) -> list[str]:
     db_file = base / db.DB_DIRNAME / db.DB_FILENAME
     if db_file.exists() and not db_file.is_file():
         doomed.append(str(db_file))
-    for name in (".gitignore", "CLAUDE.md"):
+    for name in (".gitignore", "AGENTS.md"):
         candidate = base / name
         if candidate.exists() and candidate.is_dir():
             doomed.append(str(candidate))
@@ -296,7 +301,7 @@ def adopt(directory: str | os.PathLike[str], name: str = "", pitch: str = "",
                           dimension=dimension)
     written = {
         "gitignore": stamp_gitignore(base),
-        "claude_md": stamp_claude_md(base, name),
+        "agents_md": stamp_agents_md(base, name),
     }
     project.set_active(base)
 
@@ -311,6 +316,6 @@ def adopt(directory: str | os.PathLike[str], name: str = "", pitch: str = "",
         "next": [
             "bgate doctor — check the toolchain (godot, blender, ...)",
             "bgate serve — the dashboard, on this project",
-            "read CLAUDE.md, then fill in the bible with bible_add",
+            "read AGENTS.md, then fill in the bible with bible_add",
         ],
     }

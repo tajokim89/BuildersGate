@@ -2062,7 +2062,7 @@
       : icon("doctor", 12) + esc(m.label ? m.label + " · unavailable" : "no partner");
     el.title = m.available
       ? ("thinking partner: " + (m.label || "") +
-         (m.readonly_by ? "\n\nIt cannot write to this project: " + m.readonly_by : ""))
+         (m.readonly_by ? "\n\n이 프로젝트에는 쓸 수 없습니다: " + m.readonly_by : ""))
       : (m.reason || "");
   };
 
@@ -2070,8 +2070,8 @@
     var self = this;
     var ul = this.$(".bs-list");
     if (!this.sessions.length) {
-      ul.innerHTML = '<li class="bs-empty"><b>no sessions yet</b>New starts one. ' +
-        'Nothing here is on the board.</li>';
+      ul.innerHTML = '<li class="bs-empty"><b>세션이 아직 없습니다</b>새로 만들면 시작됩니다. ' +
+        '여기 내용은 아직 보드에 올라가지 않습니다.</li>';
       return;
     }
     ul.innerHTML = this.sessions.map(function (s) {
@@ -2080,7 +2080,7 @@
         (s.status === "archived" ? "arch" : "") + '">' +
         '<span class="t">' + esc(s.title) + "</span>" +
         '<span class="m"><i class="bs-dot ' + esc(s.status) + '"></i>' +
-        esc(s.status) + " · " + (s.messages || 0) + " msg · " + esc(ago(s.updated_at)) + "</span></li>";
+        esc(s.status) + " · 메시지 " + (s.messages || 0) + "개 · " + esc(ago(s.updated_at)) + "</span></li>";
     }).join("");
     ul.querySelectorAll("li[data-id]").forEach(function (li) {
       li.addEventListener("click", function () { self.open(Number(li.dataset.id)); });
@@ -2090,7 +2090,7 @@
   Workspace.prototype.newSession = async function () {
     try {
       var s = await API.create(this.seat, "");
-      toast("new " + this.seat + " brainstorm");
+      toast(this.seat + " 브레인스토밍을 새로 만들었습니다");
       await this.load();
       this.open(s.id);
       this.$('[data-a="title"]').focus();
@@ -2341,7 +2341,7 @@
       return '<div class="bs-msg ' + (m.role === "user" ? "user" : "bot") + '">' +
         '<span class="who">' + (m.role === "user" ? "you" : esc(voice)) + "</span>" +
         '<div class="bub">' + md(m.text) + "</div></div>";
-    }).join("") : '<div class="bs-empty"><b>nothing said yet</b>' + esc(this.copy.empty) + "</div>";
+    }).join("") : '<div class="bs-empty"><b>아직 대화가 없습니다</b>' + esc(this.copy.empty) + "</div>";
     if (this.sending) {
       html += '<div class="bs-msg bot"><span class="who">' + esc(voice) + "</span>" +
         '<div class="bub bs-typing"><span></span><span></span><span></span></div></div>';
@@ -2352,7 +2352,7 @@
       // answer (no API key returns 200 with reply:null) — telling them "not
       // sent" there would have them retype a message that is already saved.
       html += '<div class="bs-msg bot err"><span class="who">' +
-        (this.chatErrorKept ? "your message is saved - the model did not answer" : "not sent") +
+        (this.chatErrorKept ? "메시지는 저장됨 - 모델 응답 없음" : "전송되지 않음") +
         "</span>" + '<div class="bub">' + esc(this.chatError) + "</div></div>";
     }
     thread.innerHTML = html;
@@ -2400,13 +2400,13 @@
       // box stays empty and the banner says so; refilling it would invite a
       // duplicate of a message the server already has.
       if (out.model && out.model.ok === false) {
-        this.chatError = out.model.error || "the model did not answer";
+        this.chatError = out.model.error || "모델이 답하지 못했습니다";
         this.chatErrorKept = true;
       }
     } catch (e) {
       this.session.messages = (this.session.messages || []).filter(function (m) { return m.id !== "tmp"; });
       this.chatError = e.status === 409
-        ? "this session is archived - reopen it before adding to it"
+        ? "보관된 세션입니다 - 다시 연 뒤 내용을 추가하세요"
         : e.message;
       this.chatErrorKept = false;
       // Nothing was stored on a thrown error, so give them their text back.

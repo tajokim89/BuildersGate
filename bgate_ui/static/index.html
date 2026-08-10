@@ -461,7 +461,7 @@
       </section>
 
       <section class="deck-view" id="view-studio">
-        <div class="view-heading" style="margin-bottom:12px"><div><span class="eyebrow">Node studio</span><h2>Studio</h2></div><p>Visual node editors for asset generation, agent orchestration, and the game.</p></div>
+        <div class="view-heading" style="margin-bottom:12px"><div><span class="eyebrow">노드 스튜디오</span><h2>스튜디오</h2></div><p>에셋 생성, 에이전트 오케스트레이션, 게임 구성을 다루는 시각 노드 편집기입니다.</p></div>
         <!-- Rendered by flows.js from the registered StudioFlows. Hardcoding
              the tabs here is what hid the asset and agent flows: both modules
              were fully built and simply never listed. -->
@@ -1891,12 +1891,12 @@ async function addItem(){
 async function dispatchItem(id){
   // The most common first-run failure lives here: "claude CLI not found on
   // PATH" comes back as 200 {ok:false,error} and used to be discarded whole.
-  const r = await mutate(`/api/queue/${id}/dispatch`, {ok:`agent dispatched on item ${id}`});
+  const r = await mutate(`/api/queue/${id}/dispatch`, {ok:`항목 ${id}에 에이전트를 투입했습니다`});
   if (!r.ok) return;
   pollQueue();
 }
 async function stopItem(id){
-  const r = await mutate(`/api/queue/${id}/stop`, {ok:`item ${id} stopped`});
+  const r = await mutate(`/api/queue/${id}/stop`, {ok:`항목 ${id} 중지됨`});
   if (!r.ok) return;
   pollQueue();
 }

@@ -244,12 +244,6 @@ def _codex_unregister(exe: str) -> list[str]:
 
 
 WIRINGS: dict[str, Wiring] = {
-    "claude": Wiring(
-        id="claude", label="Claude Code",
-        config=_claude_config, read=_claude_read, argv=_claude_argv,
-        how=("Builders Gate MCP 서버를 사용자 범위에 등록합니다. 이 기기의 "
-             "모든 게임 프로젝트가 도구를 사용할 수 있습니다."),
-        scope_note="사용자 범위 · ~/.claude.json"),
     "codex": Wiring(
         id="codex", label="Codex CLI",
         config=_codex_config, read=_codex_read, argv=_codex_argv,
@@ -259,7 +253,7 @@ WIRINGS: dict[str, Wiring] = {
         scope_note="사용자 범위 · ~/.codex/config.toml"),
 }
 
-_UNREGISTER = {"claude": _claude_unregister, "codex": _codex_unregister}
+_UNREGISTER = {"codex": _codex_unregister}
 
 
 # ---------------------------------------------------------------------------
@@ -533,25 +527,23 @@ def verify(runner_id: str) -> dict:
     command = str(entry.get("command") or "")
     if not entry.get("found") or not command:
         return {"ok": False,
-                "error": "nothing is registered for this CLI, so there is no "
-                         "interpreter to ask"}
+                "error": "이 CLI에는 등록된 항목이 없어 확인할 인터프리터가 없습니다"}
     if _is_bare(command):
         return {"ok": False, "command": command,
-                "error": "the registration names a bare interpreter, and this "
-                         "process cannot reproduce how the CLI would resolve "
-                         "it — that unpredictability IS the bug. Re-register "
-                         "to pin it."}
+                "error": "등록값이 절대경로가 아닌 인터프리터만 가리킵니다. CLI가 "
+                         "어떤 실행 파일을 잡을지 이 프로세스에서 재현할 수 없습니다. "
+                         "다시 등록해 고정하세요."}
     got = _run([command, "-c",
                 "import bgate_mcp.server, sys; print(sys.executable)"],
                VERIFY_TIMEOUT)
     if got["ok"]:
         return {"ok": True, "command": command,
-                "detail": "that interpreter imports the Builders Gate MCP "
-                          "server cleanly — the registration is live",
+                "detail": "해당 인터프리터가 Builders Gate MCP 서버를 정상적으로 "
+                          "불러옵니다. 등록이 작동 중입니다.",
                 "output": got.get("output", "")}
     return {"ok": False, "command": command,
-            "error": "that interpreter cannot import bgate_mcp — this is the "
-                     "'failed to connect' state, seen from the inside",
+            "error": "해당 인터프리터가 bgate_mcp를 불러오지 못합니다. 내부에서 "
+                     "확인한 연결 실패 상태입니다.",
             "output": got.get("output", "")}
 
 
@@ -559,15 +551,11 @@ def verify(runner_id: str) -> dict:
 # the full paragraph from _judge; a report row gets the short form of the same
 # fact so the two never say different things about one registration.
 _SHORT = {
-    "absent": "not registered — its own sessions have no Builders Gate tools",
-    "bare": "registered against a bare `python`, which resolves against PATH "
-            "at launch — the documented 'failed to connect'",
-    "other-interpreter": "registered against a different interpreter than this "
-                         "one; it works only if Builders Gate is installed "
-                         "there too",
-    "odd-args": "registered, but running something other than "
-                "`-m bgate_mcp.server`",
-    "unknown": "no MCP wiring is described for this CLI",
+    "absent": "등록되지 않음 - 이 CLI 세션에는 Builders Gate 도구가 없습니다",
+    "bare": "맨 `python`에 등록됨 - 실행 시 PATH의 첫 인터프리터를 잡습니다",
+    "other-interpreter": "이 대시보드와 다른 인터프리터에 등록됨",
+    "odd-args": "`-m bgate_mcp.server`가 아닌 다른 명령으로 등록됨",
+    "unknown": "이 CLI의 MCP 연결 방식이 정의되지 않았습니다",
 }
 
 
@@ -585,18 +573,18 @@ def doctor_row() -> dict:
     good = [r["label"] for r in rows if r["installed"] and r["mcp"].get("ok")]
     if good:
         return {"name": "agent_cli", "available": True, "optional": True,
-                "detail": ", ".join(good) + " wired to this interpreter"}
+                "detail": ", ".join(good) + "가 이 인터프리터에 연결되어 있습니다"}
     installed = [r for r in rows if r["installed"]]
     if not installed:
         return {"name": "agent_cli", "available": False, "optional": True,
-                "detail": "no coding-agent CLI found on PATH — the board can "
-                          "file work but nothing can be dispatched"}
+                "detail": "PATH에서 코딩 에이전트 CLI를 찾을 수 없습니다. 작업은 "
+                          "등록할 수 있지만 투입은 되지 않습니다"}
     return {
         "name": "agent_cli", "available": False, "optional": True,
         "detail": "; ".join(
             f"{r['label']} {_SHORT.get(r['mcp'].get('state'), r['mcp'].get('state'))}"
             for r in installed)
-        + " — fix it in Settings → Agent CLIs",
+        + " - 설정 → Codex CLI에서 고치세요",
     }
 
 

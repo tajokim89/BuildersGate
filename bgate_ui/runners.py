@@ -404,13 +404,6 @@ def _codex_chat_args(exe: str, *, system: str, model: Optional[str],
 # function object, so monkeypatching `runners.find_claude` (which the dispatch
 # tests do, to stand a fake CLI up on disk) is actually seen by the table.
 RUNNERS: dict[str, Runner] = {
-    "claude": Runner(
-        name="claude", find=lambda: find_claude(), steerable=True, cost_tracked=True,
-        prompt_via="stream", build_args=_claude_args,
-        chat=Chat(build_args=_claude_chat_args, prompt_via="stream",
-                  cost_tracked=True, readonly_by=CLAUDE_READONLY_BY),
-        note=("실행 중 지시와 실행별 비용 추적을 지원합니다. 현재 선택 여부는 "
-              "역할 표시를 따릅니다.")),
     "codex": Runner(
         name="codex", find=lambda: find_codex(), steerable=False, cost_tracked=False,
         prompt_via="stdin_once", requires_git_repo=True, build_args=_codex_args,
@@ -420,7 +413,7 @@ RUNNERS: dict[str, Runner] = {
               "토큰을 보고하므로 실행별 비용 한도는 적용되지 않습니다.")),
 }
 
-DEFAULT_RUNNER = "claude"
+DEFAULT_RUNNER = "codex"
 
 
 def get(name: str) -> Runner:
@@ -465,12 +458,7 @@ def preflight(runner: Runner, cwd: str, exe=_LOOK_IT_UP) -> Optional[str]:
     """
     resolved = runner.find() if exe is _LOOK_IT_UP else exe
     if not resolved:
-        # Wording kept as "<name> CLI not found on PATH" because that sentence
-        # is what the dispatch contract has always answered and what callers
-        # match on; the only thing added is WHICH cli, now that there are two.
-        return (f"{runner.name} CLI not found on PATH"
-                + (" (npm installs it as codex.cmd under %APPDATA%\\npm, which "
-                   "is not always on PATH)" if runner.name == "codex" else ""))
+        return f"{runner.name} CLI를 PATH에서 찾을 수 없습니다"
     try:
         safe_cwd = Path(cwd).resolve(strict=False)
     except (OSError, RuntimeError, ValueError):
@@ -486,7 +474,7 @@ def preflight(runner: Runner, cwd: str, exe=_LOOK_IT_UP) -> Optional[str]:
     # this value comes from the registry and from make_worktree, never from a
     # request body.
     if runner.requires_git_repo and not (safe_cwd / ".git").exists():
-        return (f"{cwd} is not a git repository, and {runner.name} sandboxes a "
-                "non-repo working directory to a shadow copy — every write "
-                "would report success and change nothing here")
+        return (f"{cwd}는 Git 저장소가 아닙니다. {runner.name}는 저장소가 아닌 "
+                "작업 경로를 그림자 복사본으로 격리하므로, 성공처럼 보여도 "
+                "이 프로젝트에는 변경이 남지 않습니다")
     return None

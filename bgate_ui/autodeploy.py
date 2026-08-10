@@ -210,18 +210,6 @@ def tick(root: str | os.PathLike[str], *, force: bool = False) -> dict:
     if mem["floor_until"] > now:
         return {"on": True, "dispatched": [], "refused": [],
                 "held": "floor cooldown"}
-    # No CLI is a floor condition, not forty identical per-item refusals: every
-    # candidate would fail the same way and each failure re-probes the PATH.
-    if not _dispatch.find_claude():
-        entry = {"item_id": None, "code": "no_cli",
-                 "message": "claude CLI not found on PATH — nothing can be "
-                            "dispatched, automatically or otherwise",
-                 "at": time.strftime("%H:%M:%S")}
-        with _lock:
-            mem["last"] = entry
-            mem["floor_until"] = now + FLOOR_COOLDOWN_S
-        return {"on": True, "dispatched": [], "refused": [entry]}
-
     sent: list[int] = []
     refused: list[dict] = []
     for item in _candidates(root):

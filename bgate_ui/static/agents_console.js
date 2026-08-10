@@ -485,7 +485,7 @@
 
     renderError(message) {
       const chat = document.getElementById("ck-chat");
-      if (chat) chat.innerHTML = `<div class="empty err">the console is unreachable - ${esc(message)}</div>`;
+      if (chat) chat.innerHTML = `<div class="empty err">콘솔에 연결할 수 없습니다 - ${esc(message)}</div>`;
     },
 
     /* ---- transcript ----------------------------------------------------- */
@@ -926,7 +926,7 @@
       if (!r.ok) {
         // Nothing was stored on a thrown error: give them their sentence back.
         if (input) input.value = text;
-        window.toast(r.error || "the brainstorm did not answer");
+        window.toast(r.error || "브레인스토밍 응답이 없습니다");
         this.renderChat();
         return;
       }
@@ -938,7 +938,7 @@
       // A 200 with reply:null is the no-partner path — the text IS saved, so
       // the box stays empty and the transcript says what happened instead.
       if (d.model && d.model.ok === false) {
-        this.bsError = d.model.error || "the partner did not answer";
+        this.bsError = d.model.error || "파트너가 답하지 못했습니다";
       } else { this.bsError = null; }
       this.renderChat();
     },

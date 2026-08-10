@@ -159,7 +159,7 @@ def runner_for(root) -> "_runners.Runner":
 # process older than the settings entry (or any registry read that raised) took
 # that path. A blank fallback in a function whose entire purpose is "never let
 # the CLI choose" was the bug, not the plumbing above it.
-FALLBACK_MODEL = "sonnet"
+FALLBACK_MODEL = "gpt-5.6-sol"
 
 
 def _model_for(root, runner: Optional["_runners.Runner"] = None) -> Optional[str]:
@@ -171,7 +171,7 @@ def _model_for(root, runner: Optional["_runners.Runner"] = None) -> Optional[str
     repeat that, so the fallback here is a real model rather than an empty
     string; see FALLBACK_MODEL for the run that proved it matters.
     """
-    fallback = "gpt-5.6-sol" if getattr(runner, "name", "") == "codex" else FALLBACK_MODEL
+    fallback = FALLBACK_MODEL
     chosen = str(_setting(root, "brainstorm.model", fallback) or "").strip()
     if getattr(runner, "name", "") == "codex" and chosen.lower() in ("sonnet", "opus", "haiku"):
         chosen = fallback

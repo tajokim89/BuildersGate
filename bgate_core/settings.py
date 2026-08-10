@@ -190,55 +190,49 @@ SETTINGS: tuple[Setting, ...] = (
         key="autopilot.on", group="Dispatch", kind=BOOL, default=False,
         store=("workspace", "director", "autopilot", "on"),
         env_coerce=("BGATE_AUTODEPLOY", lambda raw: False if _falsey(raw) else None),
-        env_note="BGATE_AUTODEPLOY=0 stops the loop from starting at all, so the "
-                 "stored switch cannot take effect until the server restarts",
-        help="Dispatch queued work automatically as slots free up, instead of "
-             "waiting for somebody to press deploy on each item."),
+        env_note="BGATE_AUTODEPLOY=0이면 자동 투입 루프가 시작되지 않습니다. "
+                 "저장된 스위치는 서버 재시작 뒤에만 적용됩니다.",
+        help="빈 슬롯이 생기면 큐의 작업을 자동으로 투입합니다. 각 항목에서 "
+             "투입 버튼을 누를 때까지 기다리지 않습니다."),
     Setting(
         key="dispatch.allow_dirty", group="Dispatch", kind=BOOL, default=False,
         store=("registry", "dispatch.allow_dirty"), scope=MACHINE,
         env="BGATE_ALLOW_DIRTY", guard=True, human_only=True,
-        help="Let an agent be dispatched on top of uncommitted changes. Off, "
-             "because the resulting diff cannot tell the agent's edits from "
-             "yours — which is what makes a revert safe."),
+        help="커밋되지 않은 변경 위에도 에이전트를 투입할 수 있게 합니다. 기본값은 "
+             "꺼짐입니다. diff에서 사용자의 수정과 에이전트의 수정을 구분하기 "
+             "어렵기 때문입니다."),
     Setting(
         key="dispatch.isolation", group="Dispatch", kind=BOOL, default=False,
         store=("registry", "dispatch.isolation"), scope=MACHINE,
         env="BGATE_GIT_ISOLATION",
-        env_note="the var is BGATE_GIT_ISOLATION, which is what gitwork.py has "
-                 "always read",
-        help="Run each agent in a private git worktree. Off: a worktree moves "
-             "the agent's cwd, and base_commit + diff + revert already work "
-             "without that surprise."),
+        env_note="사용되는 환경 변수는 BGATE_GIT_ISOLATION입니다.",
+        help="각 에이전트를 별도 git worktree에서 실행합니다. 기본값은 꺼짐입니다. "
+             "worktree는 에이전트 작업 경로를 옮기며, base_commit, diff, 되돌리기 "
+             "흐름은 이미 별도 worktree 없이도 작동합니다."),
     Setting(
         key="dispatch.max_concurrent", group="Dispatch", kind=INT, default=4,
         minimum=1, maximum=32, store=("budget", "max_concurrent"),
         human_only=True,
-        help="How many agents may run at once. The dispatcher refuses past "
-             "this, which is what stops a fan-out from eating the machine. "
-             "Machine-writable would make it self-service: observed going from "
-             "the 4 a human set to 9 and then 11 inside one run."),
+        help="동시에 실행할 수 있는 에이전트 수입니다. 이 수를 넘으면 디스패처가 "
+             "거부해서 대량 분기가 기기를 과도하게 쓰는 일을 막습니다."),
     Setting(
-        key="dispatch.model", group="Dispatch", kind=STRING, default="sonnet",
+        key="dispatch.model", group="Dispatch", kind=STRING, default="gpt-5.6-sol",
         store=("registry", "dispatch.model"), scope=MACHINE,
         env="BGATE_MODEL", human_only=True,
         help=("아래에서 따로 지정하지 않은 좌석이 사용할 모델입니다. Codex 실행기에서는 "
               "gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna 같은 Codex 모델을 "
-              "그대로 넘깁니다. 옛 Claude 등급명이 남아 있더라도 투입 시 좌석별 "
-              "BGATE_CODEX_MODEL_* 값으로 바꿉니다."),
+              "그대로 넘깁니다."),
     ),
     Setting(
-        key="dispatch.runner", group="Dispatch", kind=ENUM, default="claude",
-        choices=("claude", "codex"),
+        key="dispatch.runner", group="Dispatch", kind=ENUM, default="codex",
+        choices=("codex",),
         store=("registry", "dispatch.runner"), scope=MACHINE,
         env="BGATE_DISPATCH_RUNNER", human_only=True,
         help=("아트 외 보드 에이전트가 사용할 CLI입니다. `codex`는 API 키가 아니라 "
-              "로컬 Codex CLI 로그인을 사용합니다. 현재 이 Mac에서는 환경 변수로 "
-              "`codex`가 고정되어 있습니다. 비용 추적과 실행 중 지시는 Claude 쪽 "
-              "기능이라 Codex 실행에는 적용되지 않습니다."),
+              "로컬 Codex CLI 로그인을 사용합니다. 이 설치는 Codex 전용입니다."),
     ),
     Setting(
-        key="dispatch.model_art", group="Dispatch", kind=STRING, default="opus",
+        key="dispatch.model_art", group="Dispatch", kind=STRING, default="gpt-5.6-luna",
         store=("registry", "dispatch.model_art"), scope=MACHINE,
         env="BGATE_MODEL_ART", human_only=True,
         help=("아트 좌석이 사용할 모델입니다. Codex 아트 실행에는 gpt-5.6-luna 같은 "
@@ -248,11 +242,9 @@ SETTINGS: tuple[Setting, ...] = (
         key="dispatch.max_turns", group="Dispatch", kind=INT, default=120,
         minimum=0, maximum=1000, store=("registry", "dispatch.max_turns"),
         scope=MACHINE, env="BGATE_MAX_TURNS", human_only=True,
-        help="Hard ceiling on assistant turns per run; 0 disables it. There "
-             "was no ceiling: one item took 395 turns and another 393, and "
-             "because every turn re-sends the whole context the last hundred "
-             "cost more than the first hundred. The cost ceiling only trips at "
-             "a result boundary, which a grinding agent may not reach."),
+        help="실행 하나에서 허용할 assistant 턴 상한입니다. 0이면 비활성화합니다. "
+             "긴 실행이 계속 같은 컨텍스트를 다시 보내며 헛도는 상황을 막기 위한 "
+             "보호 장치입니다."),
 
     # -- Gates --------------------------------------------------------------
     Setting(
@@ -262,65 +254,53 @@ SETTINGS: tuple[Setting, ...] = (
         # NOT env="BGATE_QA_GATE": that var is a boolean kill switch and cannot
         # supply one of three modes.
         env_coerce=("BGATE_QA_GATE", lambda raw: "none" if _falsey(raw) else None),
-        env_note="BGATE_QA_GATE=0 forces no gate — the legacy kill switch, which "
-                 "keeps meaning exactly what it always meant",
+        env_note="BGATE_QA_GATE=0이면 검증 게이트를 끕니다.",
         human_only=True,
-        help="Who signs off before an agent's work counts as done: nobody, the "
-             "QA seat, or you. An agent cannot change this: switching off your "
-             "own reviewer is the same act as granting yourself the repo."),
+        help="에이전트 작업을 완료로 인정하기 전에 누가 승인할지 정합니다. 없음, "
+             "QA 좌석, 사용자 승인 중 하나입니다. 에이전트는 이 값을 바꿀 수 "
+             "없습니다."),
     Setting(
         key="qa.max_rounds", group="Gates", kind=INT, default=3,
         minimum=1, maximum=10, store=("registry", "qa.max_rounds"),
         human_only=True,
-        help="Rounds of automatic QA an item may go through before a human is "
-             "asked to arbitrate. Past that the disagreement is about taste, "
-             "and another agent will not settle it — it is a money pump."),
+        help="사용자 판단을 요청하기 전까지 자동 QA가 반복될 수 있는 횟수입니다. "
+             "이 값을 넘으면 더 많은 에이전트를 돌려도 결론이 나지 않을 가능성이 "
+             "큽니다."),
     Setting(
         key="qa.gated_seats", group="Gates", kind=LIST,
         default=("art", "gameplay", "audio", "narrative"),
         choices=("art", "gameplay", "audio", "narrative", "tech"),
         store=("registry", "qa.gated_seats"), human_only=True,
-        help="Which maker seats get an automatic QA reviewer when their work "
-             "is completed. Was a hardcoded tuple in the gate, so a studio that "
-             "wanted QA on art alone had to edit harness source — which changed "
-             "it for every project on the machine and needed a restart. "
-             "director and qa are never gated: that is recursion, not review."),
+        help="작업 완료 뒤 자동 QA 검토를 받을 제작 좌석 목록입니다. director와 "
+             "qa는 재귀 검토가 되므로 대상에 넣지 않습니다."),
     Setting(
         key="signoff.hours", group="Gates", kind=INT, default=8,
         minimum=1, maximum=168, store=("registry", "signoff.hours"),
-        help="How long a finished item keeps asking for sign-off in the "
-             "console before it stops being surfaced there."),
+        help="완료된 항목이 콘솔에서 승인 요청으로 표시되는 시간입니다."),
 
     # -- Art ----------------------------------------------------------------
     Setting(
         key="art.style_source", group="Art", kind=ENUM, default="refs",
         choices=("refs", "lora"),
         store=("workspace", "art", "styles", "mode"),
-        help="Where a generation gets this project's LOOK. `refs` sends the "
-             "pinned anchors as style references, which is how it has always "
-             "worked. `lora` uses the style trained from those same anchors, "
-             "which frees the reference slot to carry IDENTITY instead — the "
-             "job it competes with today. Needs a trained style; without one "
-             "this falls back to refs rather than generating unanchored."),
+        help="생성물이 이 프로젝트의 화면 톤을 어디서 가져올지 정합니다. `refs`는 "
+             "고정 참조를 스타일 기준으로 보내고, `lora`는 그 참조로 학습한 "
+             "스타일을 사용합니다. 학습된 스타일이 없으면 `refs`를 사용합니다."),
     Setting(
         key="art.style_dataset", group="Art", kind=ENUM, default="pins",
         choices=("pins", "assets", "both"),
         store=("workspace", "art", "styles", "source"),
-        help="Which shelf a training run draws from. `pins` is the anchors a "
-             "human approved through ref_pin — the right default and a small "
-             "set. `assets` is the game's own shipped art, which on a project "
-             "that has been generating for weeks is hundreds of finished, "
-             "in-game pieces nobody re-pinned. Everything still passes the "
-             "1024px floor and your confirmation either way."),
+        help="스타일 학습에 사용할 자료 묶음입니다. `pins`는 사용자가 승인한 고정 "
+             "참조, `assets`는 게임 안에 들어간 완료 아트, `both`는 둘 다 "
+             "사용합니다."),
     Setting(
         key="art.lora_strength", group="Art", kind=FLOAT, default=0.85,
         minimum=0.0, maximum=1.0, store=("registry", "art.lora_strength"),
-        help="How hard the trained style pulls, 0-1. Krea recommends 0.8-0.9; "
-             "1.0 is where a style stops being a style and becomes a stamp. A "
-             "style's own record can override this per style."),
+        help="학습된 스타일을 얼마나 강하게 반영할지 정합니다. 0에서 1 사이 값이며, "
+             "스타일별 기록이 있으면 그 값이 우선할 수 있습니다."),
     Setting(
-        key="art.runner", group="Art", kind=ENUM, default="claude",
-        choices=("claude", "codex"),
+        key="art.runner", group="Art", kind=ENUM, default="codex",
+        choices=("codex",),
         store=("registry", "art.runner"), scope=MACHINE,
         env="BGATE_ART_RUNNER",
         help=("아트 좌석 에이전트가 사용할 CLI입니다. `codex`는 이미지를 자체 생성할 "
@@ -333,143 +313,119 @@ SETTINGS: tuple[Setting, ...] = (
         choices=("bgate", "native"),
         store=("registry", "art.image_backend"),
         env="BGATE_IMAGE_BACKEND",
-        help="Who makes the PIXELS, and nothing else. `bgate` is image_generate "
-             "and the pipeline behind it: pinned references, the trained style, "
-             "consistency_check, the artifact ledger, BGATE_IMAGE_MODEL. "
-             "`native` lets a runner that has its own image tool use it — "
-             "faster, and outside all of that. Either way the agent still "
-             "reads refs, holds locks, checks consistency and registers what it "
-             "made; only the generation call changes. On a runner with no image "
-             "tool of its own this falls back to `bgate` rather than failing."),
+        help="픽셀을 누가 만들지 정합니다. `bgate`는 image_generate와 고정 참조, "
+             "스타일, consistency_check, 아티팩트 기록을 쓰는 기본 파이프라인입니다. "
+             "`native`는 자체 이미지 도구가 있는 실행기가 직접 생성하게 합니다. "
+             "이 설치에서는 Codex 네이티브 이미지 생성을 사용합니다."),
     Setting(
         key="art.auto_approve", group="Art", kind=BOOL, default=False,
         store=("registry", "art.auto_approve"),
         env="BGATE_ART_AUTO_APPROVE",
-        help="Let an agent promote its own generated artifact to canon, instead "
-             "of every candidate waiting on a human approve/reject. OFF by "
-             "default, and the default is the considered position: approval is "
-             "the one decision in this pipeline a model may not make, and the "
-             "art-QA router exists precisely so the art seat cannot approve its "
-             "own drift. Turn it on when the review queue is the bottleneck and "
-             "you accept that unreviewed generations reach the build — a "
-             "turnaround at four angles per asset registers four candidates, "
-             "and that volume is usually the real complaint. Rejection stays "
-             "available to agents either way; this only unblocks approval."),
+        help="에이전트가 자신이 만든 아티팩트를 직접 canon으로 승격할 수 있게 "
+             "합니다. 기본값은 꺼짐입니다. 승인 판단은 사용자 또는 QA 흐름에서 "
+             "다루는 편이 안전합니다."),
 
     # -- Follow-up ----------------------------------------------------------
     Setting(
         key="followup.director_debrief", group="Follow-up", kind=BOOL,
         default=False, store=("registry", "followup.director_debrief"),
-        help="On completion, file a debrief item for the director, which may "
-             "dispatch the follow-up, ask you one question, or close it out. "
-             "Off, and it stays off on upgrade: this spends money on every "
-             "completed item."),
+        help="작업 완료 뒤 director 디브리프 항목을 등록합니다. 후속 작업을 투입하거나 "
+             "질문 하나를 남기거나 그대로 닫을 수 있습니다. 기본값은 꺼짐입니다."),
     Setting(
         key="followup.max_per_hour", group="Follow-up", kind=INT, default=4,
         minimum=1, maximum=60, store=("registry", "followup.max_per_hour"),
-        help="Ceiling on debriefs per hour. A busy board finishing twenty "
-             "items must not buy twenty director agents."),
+        help="시간당 디브리프 상한입니다. 많은 항목이 한꺼번에 끝나도 director "
+             "에이전트를 과도하게 만들지 않게 합니다."),
     Setting(
         key="followup.max_age_min", group="Follow-up", kind=INT, default=30,
         minimum=1, maximum=1440, store=("registry", "followup.max_age_min"),
-        help="Skip the debrief when the completion is older than this. A "
-             "subscriber that was down for eight hours must not wake up and "
-             "fire eight hours of debriefs at a board that has moved on."),
+        help="완료 시점이 이 값보다 오래되었으면 디브리프를 건너뜁니다. 오래 멈췄던 "
+             "대시보드가 밀린 디브리프를 한꺼번에 등록하는 일을 막습니다."),
     Setting(
         key="followup.auto_reopen_failures", group="Follow-up", kind=BOOL,
         default=False, store=("registry", "followup.auto_reopen_failures"),
-        help="Reopen a failed item with the failure text instead of leaving it "
-             "for a human, up to qa.max_rounds attempts. Off: a failure that "
-             "retries itself unattended is how one broken brief spends a "
-             "night's budget."),
+        help="실패 항목을 사용자에게 남겨 두는 대신 실패 문구를 붙여 다시 엽니다. "
+             "qa.max_rounds 횟수까지만 반복합니다. 기본값은 꺼짐입니다."),
 
     # -- Notifications ------------------------------------------------------
     Setting(
         key="notify.in_app", group="Notifications", kind=BOOL, default=True,
         store=("registry", "notify.in_app"),
-        help="Light the header bell and fill the drawer. On by default because "
-             "it costs nothing and leaves nothing — but it only tells you "
-             "things while the dashboard is open."),
+        help="상단 알림 종을 켜고 알림 서랍에 기록합니다. 대시보드가 열려 있을 때만 "
+             "보입니다."),
     Setting(
         key="notify.kinds", group="Notifications", kind=LIST,
         default=("item.done", "item.failed", "item.review", "chain.stalled",
                  "director.question", "budget.refused"),
         choices=EVENT_KINDS, store=("registry", "notify.kinds"),
-        help="Which events are worth telling you about. The rest are still "
-             "recorded and still readable in the drawer, they just do not "
-             "ring — a bell that rings for everything gets muted."),
+        help="알림으로 띄울 이벤트 종류입니다. 나머지도 기록되지만 종을 울리지는 "
+             "않습니다."),
     Setting(
         key="notify.webhook", group="Notifications", kind=STRING, default="",
         store=("registry", "notify.webhook"), scope=MACHINE,
-        help="POST notifications to this https URL. Empty, and deliberately: "
-             "this is the only path that sends anything off the machine, which "
-             "breaks the promise the rest of the tool makes. https only, no "
-             "private or link-local addresses, one attempt."),
+        help="알림을 보낼 HTTPS URL입니다. 비워 두면 외부 전송이 없습니다. 이 값은 "
+             "기기 밖으로 데이터를 보내는 경로이므로 HTTPS만 허용합니다."),
     Setting(
         key="notify.stall_hours", group="Notifications", kind=FLOAT, default=2.0,
         minimum=0.25, maximum=168.0, store=("registry", "notify.stall_hours"),
-        help="How long a chain's head may sit in review or blocked before it "
-             "is called stalled. The bus is transition-driven, so without this "
-             "the quiet failure — nothing happening — emits nothing."),
+        help="체인의 맨 앞 항목이 검토 또는 차단 상태로 얼마나 오래 있으면 정체로 "
+             "볼지 정합니다."),
     Setting(
         key="notify.question_stale_h", group="Notifications", kind=FLOAT,
         default=12.0, minimum=0.25, maximum=168.0,
         store=("registry", "notify.question_stale_h"),
-        help="How long an unanswered director question waits before one "
-             "reminder. One, not a repeat of the question: a ping that "
-             "re-asks is the thing people mute."),
+        help="답변되지 않은 director 질문에 대해 한 번 알림을 보내기까지 기다리는 "
+             "시간입니다."),
     Setting(
         key="notify.quiet_hours", group="Notifications", kind=STRING, default="",
         store=("registry", "notify.quiet_hours"), scope=MACHINE,
-        help="A window like 23:00-07:00 in which nothing is delivered; events "
-             "still accumulate and collapse into one notice afterwards. Empty "
-             "means always deliver."),
+        help="23:00-07:00 같은 무음 시간대입니다. 이벤트는 쌓아 두었다가 이후 한 "
+             "번에 알립니다. 비워 두면 항상 알립니다."),
 
     # -- Budget (the spend_budget row; described here, not copied) ----------
     Setting(
         key="budget.enforced", group="Budget", kind=BOOL, default=True,
         store=("budget", "enforced"), human_only=True,
-        help="Refuse a dispatch that would breach a ceiling. Off turns every "
-             "number below into a report rather than a limit."),
+        help="한도를 넘길 투입을 거부합니다. 끄면 아래 숫자는 제한이 아니라 보고용 "
+             "값이 됩니다."),
     Setting(
         key="budget.per_item_usd", group="Budget", kind=FLOAT, default=5.0,
         minimum=0.0, maximum=10000.0, store=("budget", "per_item_usd"),
         human_only=True,
-        help="Ceiling for one agent run, in USD. Also the figure the "
-             "dispatcher projects against the daily budget before spawning."),
+        help="에이전트 실행 하나의 USD 한도입니다. 투입 전에 일일 예산과 비교하는 "
+             "기준이기도 합니다."),
     Setting(
         key="budget.per_day_usd", group="Budget", kind=FLOAT, default=25.0,
         minimum=0.0, maximum=100000.0, store=("budget", "per_day_usd"),
         human_only=True,
-        help="Ceiling for today, in USD. 0 means no daily ceiling."),
+        help="오늘 하루의 USD 한도입니다. 0이면 일일 한도를 두지 않습니다."),
     Setting(
         key="budget.per_project_usd", group="Budget", kind=FLOAT, default=250.0,
         minimum=0.0, maximum=1000000.0, store=("budget", "per_project_usd"),
         human_only=True,
-        help="Lifetime ceiling for this project, in USD. 0 means none."),
+        help="이 프로젝트 전체의 USD 한도입니다. 0이면 전체 한도를 두지 않습니다."),
     Setting(
         key="budget.max_runtime_s", group="Budget", kind=INT, default=1800,
         minimum=30, maximum=86400, store=("budget", "max_runtime_s"),
         human_only=True,
-        help="Wall clock an agent gets before it is killed. The backstop for a "
-             "run that is spending without progressing."),
+        help="에이전트 실행의 실제 시간 한도입니다. 진행 없이 오래 도는 실행을 "
+             "막는 마지막 보호 장치입니다."),
 
     # -- Console (client-side; delivered in the page bootstrap) -------------
     Setting(
         key="console.poll_live_ms", group="Console", kind=INT, default=3000,
         minimum=500, maximum=60000, store=("registry", "console.poll_live_ms"),
-        help="How often the console refreshes while an agent is running. "
-             "Lower feels live and costs the dashboard more requests."),
+        help="에이전트가 실행 중일 때 콘솔을 새로고침하는 간격입니다. 낮을수록 "
+             "실시간처럼 보이지만 요청이 늘어납니다."),
     Setting(
         key="console.poll_idle_ms", group="Console", kind=INT, default=12000,
         minimum=1000, maximum=300000, store=("registry", "console.poll_idle_ms"),
-        help="How often the console refreshes when nothing is running."),
+        help="실행 중인 에이전트가 없을 때 콘솔을 새로고침하는 간격입니다."),
     Setting(
         key="graph.phase_cap", group="Console", kind=INT, default=6,
         minimum=1, maximum=50, store=("registry", "graph.phase_cap"),
-        help="How many phase rows the graph draws per item before it stops. A "
-             "long-running agent otherwise paints a node taller than the "
-             "canvas."),
+        help="항목 하나에 표시할 단계 줄 수의 상한입니다. 오래 도는 에이전트가 그래프 "
+             "노드를 지나치게 키우는 일을 막습니다."),
     Setting(
         key="brainstorm.runner", group="Console", kind=STRING, default="codex",
         store=("registry", "brainstorm.runner"), scope=MACHINE,
@@ -479,34 +435,21 @@ SETTINGS: tuple[Setting, ...] = (
         # import, and a choices tuple copied out of it is a second list that
         # goes stale the day somebody adds a local model. An unknown name falls
         # back to the default and the room says which runner it ended up on.
-        help="Which CLI the brainstorm room's thinking partner runs on. It is "
-             "spawned with the built-in tool set EMPTY and one two-tool MCP "
-             "server registered — read and draw on this session's own pads, "
-             "nothing else — so it can talk, it can join your diagram, and it "
-             "cannot reach the queue, the repo or a generator. A runner that "
-             "has not declared that read-only mode is refused rather than "
-             "started with the dispatch flags. `codex` runs through the local "
-             "Codex CLI login, not through an API key."),
+        help="브레인스토밍 방의 사고 파트너가 사용할 CLI입니다. `codex`는 API 키가 "
+             "아니라 로컬 Codex CLI 로그인으로 실행됩니다. 이 방은 읽기 전용 "
+             "도구만 받아 큐, 저장소, 생성기에 직접 닿지 않습니다."),
     Setting(
         key="brainstorm.model", group="Console", kind=STRING, default="gpt-5.6-sol",
         store=("registry", "brainstorm.model"), scope=MACHINE,
         env="BGATE_BRAINSTORM_MODEL", human_only=True,
-        help="The model a brainstorm turn runs on. Named rather than inherited "
-             "for the same reason dispatch.model is: an unset --model means "
-             "whatever the CLI defaults to that day, which is how a night of "
-             "work went out on the largest model nobody chose. Blank inherits "
-             "the CLI default and accepts that."),
+        help="브레인스토밍 턴에 사용할 모델입니다. 기본값은 gpt-5.6-sol입니다. "
+             "비워 두면 CLI 기본값을 사용합니다."),
     Setting(
         key="brainstorm.max_usd", group="Console", kind=FLOAT, default=2.0,
         minimum=0.0, maximum=100.0, store=("registry", "brainstorm.max_usd"),
         scope=MACHINE, human_only=True,
-        help="What one brainstorm conversation may spend before it stops "
-             "answering. This is the CHEAP room — that is the whole reason it "
-             "exists next to the board — and the partner is now a real CLI "
-             "session rather than a fraction-of-a-cent API call: one trivial "
-             "measured turn was $0.06. Passed to the CLI's own --max-budget-usd "
-             "and also tracked across the conversation, so respawning cannot "
-             "launder a per-process ceiling into no ceiling. 0 removes it."),
+        help="브레인스토밍 대화 하나가 답변을 멈추기 전까지 쓸 수 있는 USD 한도입니다. "
+             "0이면 한도를 두지 않습니다."),
 
     # -- Privacy ------------------------------------------------------------
     # MACHINE scope, not PROJECT. Whose home directory is on screen is a fact
@@ -517,14 +460,9 @@ SETTINGS: tuple[Setting, ...] = (
         key="privacy.streamer", group="Privacy", kind=BOOL, default=False,
         store=("registry", "privacy.streamer"), scope=MACHINE,
         env="BGATE_STREAMER",
-        env_note="BGATE_STREAMER in the environment wins over this switch, so a "
-                 "shell that exports it keeps the filter on no matter what the "
-                 "panel says — which is the safe direction for this one",
-        help="Hide absolute paths, your username, hostname, email and any API "
-             "key from the dashboard, the logs and the CLI. For streaming, "
-             "screen-sharing and screenshots. It is a DISPLAY filter: the .env, "
-             "the database and devtools are unchanged, and the dashboard's own "
-             "auth token is deliberately left alone because the page needs it."),
+        env_note="환경의 BGATE_STREAMER 값이 이 스위치보다 우선합니다.",
+        help="대시보드, 로그, CLI 표시에서 절대경로, 사용자 이름, 호스트 이름, 이메일, "
+             "API 키를 가립니다. 스트리밍, 화면 공유, 스크린샷용 표시 필터입니다."),
 
     # -- Community ----------------------------------------------------------
     # Live-stream chat. The CREDENTIALS are not here and must not be: a channel
@@ -537,30 +475,19 @@ SETTINGS: tuple[Setting, ...] = (
         key="chat.autoconnect", group="Community", kind=BOOL, default=False,
         store=("registry", "chat.autoconnect"), scope=MACHINE,
         env_coerce=("BGATE_CHAT", lambda raw: False if _falsey(raw) else None),
-        env_note="BGATE_CHAT=0 stops the connection from being made at all, so "
-                 "the stored switch cannot take effect until it is unset",
-        help="Connect to your stream's chat when the dashboard starts, instead "
-             "of pressing connect. Off by default: opening a socket to a public "
-             "chat room is not something a dev tool should do because it "
-             "launched."),
+        env_note="BGATE_CHAT=0이면 채팅 연결을 만들지 않습니다.",
+        help="대시보드 시작 시 스트림 채팅에 자동 연결합니다. 기본값은 꺼짐입니다."),
     Setting(
         key="chat.capture", group="Community", kind=ENUM, default="all",
         choices=("all", "marked"),
         store=("registry", "chat.capture"),
-        help="What counts as feedback during a session. 'all' keeps everything "
-             "that survives the filler filter, because the honest reaction is "
-             "the unmarked one nobody typed a command for — one person can "
-             "still only contribute a capped number of lines. 'marked' keeps "
-             "only messages starting !fb, which is the right choice for a big "
-             "channel or a raid."),
+        help="세션 중 어떤 채팅을 피드백으로 볼지 정합니다. `all`은 필터를 통과한 "
+             "채팅을 모두 보관하고, `marked`는 !fb로 시작한 메시지만 보관합니다."),
     Setting(
         key="chat.playtest_notes", group="Community", kind=BOOL, default=True,
         store=("registry", "chat.playtest_notes"),
-        help="Let viewers leave notes on a playtest while it records, on the "
-             "same clock as your own typed notes and attributed to them. They "
-             "land as candidates only — a note from chat is never "
-             "auto-promoted, and nothing reaches an agent without you "
-             "confirming a plan."),
+        help="플레이테스트 녹화 중 시청자가 메모를 남길 수 있게 합니다. 채팅 메모는 "
+             "후보로만 들어가며, 사용자 확인 없이 에이전트 작업으로 넘어가지 않습니다."),
 )
 
 BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
@@ -914,7 +841,7 @@ def set(root: str | os.PathLike[str], key: str, value: Any, *,
     live, src, var = _resolve(root, s)
     note = ""
     if src == SOURCE_ENV:
-        note = s.env_note or f"{var} is overriding this"
+        note = s.env_note or f"{var}가 이 값을 덮어쓰는 중입니다"
     if s.guard and live != was:
         _audit_guard(root, s, was, live)
     return {"ok": True, "key": key, "stored": clean, "value": live,
@@ -979,7 +906,7 @@ def _field(root, s: Setting) -> dict:
         # control whose effect is invisible. It stays writable through the API
         # on purpose — see set().
         "locked": src == SOURCE_ENV,
-        "env_override": (s.env_note or f"{var} is overriding this") if src == SOURCE_ENV else "",
+        "env_override": (s.env_note or f"{var}가 이 값을 덮어쓰는 중입니다") if src == SOURCE_ENV else "",
         # Turning this one ON gives up a protection. The panel asks first; the
         # audit records it whether or not anybody read the dialog.
         "guard": bool(s.guard),

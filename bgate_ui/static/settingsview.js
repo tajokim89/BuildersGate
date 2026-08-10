@@ -832,9 +832,9 @@
         + item(LOCAL, "Local generators", "art", "", "",
                "ComfyUI and the local image-to-3D servers: what can generate on "
                + "this machine, with no key and no bill")
-        + item(AGENTS, "Agent CLIs", "agents", "", "",
-               "Claude Code and Codex: installed, and whether Builders Gate is "
-               + "registered with the right interpreter");
+        + item(AGENTS, "Codex CLI", "agents", "", "",
+               "Codex 설치 여부와 Builders Gate MCP가 올바른 인터프리터에 "
+               + "등록됐는지 확인합니다");
     },
 
     /* ---- panes ---------------------------------------------------------- */

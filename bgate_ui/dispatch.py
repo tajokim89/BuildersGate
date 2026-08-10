@@ -244,12 +244,14 @@ def _model_for_runner(root: str, seat: str, runner: "_runners.Runner",
     the wrong reason. Keep the explicit CLI boundary here instead of teaching
     every caller which model vocabulary each runner accepts.
     """
-    model = (chosen or _model_for(root, seat) or "").strip()
     if runner.name != "codex":
+        model = (chosen or _model_for(root, seat) or "").strip()
         return model or None
+    model = (chosen or "").strip()
+    if not model:
+        return _codex_model_for_seat(seat)
     lowered = model.lower()
-    if (not model or lowered in ("sonnet", "opus", "haiku")
-            or lowered.startswith("claude")):
+    if lowered in ("sonnet", "opus", "haiku") or lowered.startswith("claude"):
         return _codex_model_for_seat(seat)
     return model
 
@@ -863,6 +865,7 @@ def _spawn(root: str, item_id: int, *, permission_mode: str = "acceptEdits",
                           # can be changed while this agent is mid-flight, and
                           # what it is running under is a fact about the run.
                           "runner": runner.name,
+                          "prompt_via": runner.prompt_via,
                           "cost_tracked": runner.cost_tracked,
                           "steerable": runner.steerable,
                           "native_images": native_images,
@@ -1184,7 +1187,7 @@ def _watch_completion(root: str, item_id: int, poll_s: float = 2.0,
                 return
         if not entry.get("stdin_closed"):
             try:
-                if _queue.get(root, item_id)["status"] in ("done", "failed"):
+                if _queue.get(root, item_id)["status"] in ("done", "failed", "review"):
                     try:
                         entry["stdin"].close()
                     except OSError:
@@ -1194,8 +1197,14 @@ def _watch_completion(root: str, item_id: int, poll_s: float = 2.0,
             except LookupError:
                 return
             continue
-        # stdin closed: give the process the grace period, then kill its
-        # whole tree (the agent's own MCP-server children orphan too).
+        # A stdin-once runner, such as Codex, starts only after stdin closes.
+        # That close is the beginning of work, not permission to reap it after
+        # the streamed-runner exit grace.
+        if entry.get("prompt_via") != "stream":
+            continue
+        # stdin closed on a streamed runner: give the process the grace period,
+        # then kill its whole tree (the agent's own MCP-server children orphan
+        # too).
         # setdefault matters: another path (stop, a manual sweep) may close
         # stdin FIRST without stamping eof_at — without this, the default
         # re-evaluated to now() every pass and the kill NEVER fired (the
@@ -1277,6 +1286,21 @@ def _final_event(root: str, item_id: int) -> dict:
         return {}
 
 
+def _touched_paths(root: str, entry: dict) -> list[str]:
+    """Files changed by this run since its recorded base commit."""
+    base = str(entry.get("base_commit") or "").strip()
+    if not base:
+        return []
+    try:
+        touched = _git.touched(str(entry.get("cwd") or root), base)
+    except Exception:
+        return []
+    if not touched.get("available"):
+        return []
+    paths = touched.get("paths") or []
+    return [str(path) for path in paths if str(path).strip()]
+
+
 def _exit_verdict(root: str, item_id: int, code, entry: dict) -> tuple[str, str]:
     """What a dead process means for its item.
 
@@ -1292,21 +1316,25 @@ def _exit_verdict(root: str, item_id: int, code, entry: dict) -> tuple[str, str]
         return "failed", stopped
     final = _final_event(root, item_id)
     said = str(final.get("text") or "").strip()
-    tail = f"; its last words: {said[:400]}" if said else ""
+    tail = f"; 마지막 응답: {said[:400]}" if said else ""
     if code != 0:
-        return "failed", f"session exited {code} without self-reporting{tail}"
+        return "failed", f"세션이 완료 보고 없이 종료되었습니다. 종료 코드: {code}{tail}"
     if not final:
-        return "failed", ("session exited 0 without ever reporting a result — "
-                          "nothing was accounted for, so this is not done "
-                          "(a crashed or no-op run looks exactly like this)")
+        return "failed", ("세션이 결과 보고 없이 종료되었습니다. 기록할 산출물이 없으므로 "
+                          "완료로 볼 수 없습니다")
     if _final_is_error(final):
-        return "failed", (f"session ended in error ({final.get('subtype') or 'error'}"
-                          f") without self-reporting{tail}")
+        return "failed", (f"세션이 오류로 끝났고 완료 보고가 없었습니다 "
+                          f"({final.get('subtype') or 'error'}){tail}")
     if final.get("subtype") != "success":
-        return "failed", (f"session ended as {final.get('subtype')!r} without "
-                          f"self-reporting{tail}")
-    return "done", ("session exited cleanly and reported success without calling "
-                    f"queue_complete{tail}")
+        return "failed", (f"세션이 {final.get('subtype')!r} 상태로 끝났고 "
+                          f"완료 보고가 없었습니다{tail}")
+    paths = _touched_paths(root, entry)
+    if not paths:
+        return "failed", ("세션이 성공처럼 말했지만 queue_complete를 호출하지 않았고 "
+                          "바뀐 파일도 없습니다. 검증할 산출물이 없습니다"
+                          f"{tail}")
+    return "done", ("세션이 종료되었고 성공 응답을 남겼지만 queue_complete를 호출하지 "
+                    f"않았습니다. 변경 파일: {', '.join(paths[:8])}{tail}")
 
 
 def _reap(root: str, item_id: int, entry: dict, code) -> dict:
@@ -1327,13 +1355,22 @@ def _reap(root: str, item_id: int, entry: dict, code) -> dict:
             entry[key].close()
         except Exception:
             pass
-    outcome, result = _exit_verdict(root, item_id, code, entry)
+    spoke_for_itself = None
+    try:
+        spoke_for_itself = _queue.get(root, item_id)
+    except LookupError:
+        spoke_for_itself = None
+    if spoke_for_itself and spoke_for_itself.get("status") in ("done", "failed", "review"):
+        outcome = str(spoke_for_itself.get("status") or "done")
+        result = str(spoke_for_itself.get("result") or "queue_complete 호출됨")
+    else:
+        outcome, result = _exit_verdict(root, item_id, code, entry)
     try:
         # Only if the agent never spoke for itself: queue_complete's own result
         # is the better answer and must never be overwritten. Through complete()
         # rather than set_status so a session that exits cleanly without
         # self-reporting still lands in the approval gate instead of skipping it.
-        if _queue.get(root, item_id)["status"] == "dispatched":
+        if (spoke_for_itself or _queue.get(root, item_id))["status"] == "dispatched":
             _queue.complete(root, item_id, result=result,
                             failed=(outcome != "done"))
     except LookupError:
@@ -1446,16 +1483,27 @@ def reconcile(root: str) -> dict:
         error = _terminal_error(root, item_id)
         if error:
             outcome = "failed"
-            result = "the dashboard restarted before this was banked; " + error
+            result = "대시보드 재시작 전에 실행 정산이 끊겼습니다. " + error
         elif final.get("subtype") == "success":
-            outcome = "done"
+            entry = {"base_commit": item.get("base_commit") or "", "cwd": str(root)}
+            paths = _touched_paths(root, entry)
             said = str(final.get("text") or "").strip()[:400]
-            result = ("the dashboard restarted before this was banked; the "
-                      "agent's log ends in success" + (f": {said}" if said else ""))
+            if paths:
+                outcome = "done"
+                result = ("대시보드 재시작 전에 실행 정산이 끊겼습니다. 에이전트 로그는 "
+                          "성공으로 끝났고 변경 파일이 있습니다: "
+                          + ", ".join(paths[:8])
+                          + (f": {said}" if said else ""))
+            else:
+                outcome = "failed"
+                result = ("대시보드 재시작 전에 실행 정산이 끊겼습니다. 에이전트가 "
+                          "응답은 남겼지만 바뀐 파일이 없고 queue_complete도 호출하지 "
+                          "않아서 검증할 산출물이 없습니다"
+                          + (f": {said}" if said else ""))
         else:
             outcome = "failed"
-            result = ("stranded by a dashboard restart — the process did not "
-                      "survive it and never reported a result")
+            result = ("대시보드 재시작으로 실행이 고아 상태가 되었습니다. 프로세스가 "
+                      "살아남지 못했고 결과 보고도 없습니다")
         try:
             _queue.complete(root, item_id, result=result,
                             failed=(outcome != "done"))

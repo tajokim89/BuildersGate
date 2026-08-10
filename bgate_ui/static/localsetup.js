@@ -63,9 +63,9 @@
   const STALE_MS = 4000;
 
   const TONE_WORD = {
-    ready: "ready", unreachable: "not running", unhealthy: "problem",
-    unconfigured: "not set up", configured: "not checked",
-    unavailable: "unsupported",
+    ready: "준비됨", unreachable: "실행 중 아님", unhealthy: "문제 있음",
+    unconfigured: "설정 필요", configured: "확인 필요",
+    unavailable: "지원 제외",
   };
 
   /* ── styles ─────────────────────────────────────────────────────────────
@@ -175,12 +175,12 @@
 
   function chips(items, cap) {
     const list = items || [];
-    if (!list.length) return `<div class="lc-none">none reported</div>`;
+    if (!list.length) return `<div class="lc-none">보고된 항목 없음</div>`;
     const shown = list.slice(0, cap || 14).map(v =>
       `<span class="lc-chip">${esc(v)}</span>`).join("");
     const rest = list.length - (cap || 14);
     return `<div class="lc-chips">${shown}${rest > 0
-      ? `<span class="lc-chip more">+${rest} more</span>` : ""}</div>`;
+      ? `<span class="lc-chip more">외 ${rest}개</span>` : ""}</div>`;
   }
 
   /* ── the local runtime card ──────────────────────────────────────────── */
@@ -189,7 +189,7 @@
     const id = `${rt.id}::${f.env}`;
     const control = f.kind === "choice"
       ? `<select class="lc-sel" data-lc-in="${esc(id)}">
-           <option value="">— not declared —</option>
+           <option value="">- 선언되지 않음 -</option>
            ${(f.choices || []).map(c =>
              `<option value="${esc(c)}"${c === f.value ? " selected" : ""}>${esc(c)}</option>`
            ).join("")}
@@ -205,36 +205,36 @@
        beating it, so the page shows a path and the adapter sees nothing. */
     let note = "";
     if (f.source === "environment") {
-      note = `<span class="warn">set in your shell environment, not this
-        project's .env — this page can overwrite it for the .env, but the shell
-        keeps winning until you unset it and restart</span>`;
+      note = `<span class="warn">이 프로젝트의 .env가 아니라 셸 환경에 설정되어
+        있습니다. 이 페이지에서 .env 값을 바꿀 수는 있지만, 셸 값을 지우고
+        대시보드를 다시 시작하기 전까지는 셸 환경이 우선합니다.</span>`;
     } else if (f.source === "shadowed") {
-      note = `<span class="warn">${esc(f.env)} is set to an EMPTY value in this
-        shell, which beats the .env — unset it and restart the dashboard</span>`;
+      note = `<span class="warn">${esc(f.env)}가 이 셸에서 빈 값으로 잡혀 있어
+        .env보다 우선합니다. 값을 지운 뒤 대시보드를 다시 시작하세요.</span>`;
     } else if (f.source === "env_file") {
-      note = `saved in this project's <code>.env</code>`;
+      note = `이 프로젝트의 <code>.env</code>에 저장됨`;
     } else if (f.using_default) {
-      note = `not set - using the default <code>${esc(f.default)}</code>`;
+      note = `설정값 없음 - 기본값 <code>${esc(f.default)}</code> 사용`;
     } else {
-      note = `not set`;
+      note = `설정값 없음`;
     }
     if (f.exists === false && f.value) {
-      note = `<span class="warn">that file does not exist</span> · ` + note;
+      note = `<span class="warn">파일을 찾을 수 없음</span> · ` + note;
     } else if (f.exists === true) {
-      note = `<span class="good">file found</span> · ` + note;
+      note = `<span class="good">파일 확인됨</span> · ` + note;
     }
 
     return `<div class="lc-f">
       <div class="lc-flab">
         <span class="n">${esc(f.label)}</span>
-        ${f.required ? `<span class="lc-req">required</span>` : ""}
+        ${f.required ? `<span class="lc-req">필수</span>` : ""}
         <span class="v">${esc(f.env)}</span>
       </div>
       <div class="lc-fhelp">${esc(f.help)}</div>
       <div class="lc-row">
         ${control}
-        <button class="lc-btn go" data-lc-act="save" data-lc-id="${esc(id)}">save</button>
-        ${f.value ? `<button class="lc-btn" data-lc-act="clear" data-lc-id="${esc(id)}">clear</button>` : ""}
+        <button class="lc-btn go" data-lc-act="save" data-lc-id="${esc(id)}">저장</button>
+        ${f.value ? `<button class="lc-btn" data-lc-act="clear" data-lc-id="${esc(id)}">지우기</button>` : ""}
       </div>
       <div class="lc-fnote">${note}</div>
     </div>`;
@@ -244,7 +244,7 @@
     const lamp = rt.tone === "good" ? "good" : (rt.tone === "warn" ? "warn" : "");
     const pills = (rt.power_labels || []).map(p =>
       `<span class="lc-pill">${esc(p)}</span>`).join("")
-      + `<span class="lc-pill free">$0 · stays on this machine</span>`;
+      + `<span class="lc-pill free">$0 · 이 기기에서만 처리</span>`;
 
     /* The start instructions appear exactly when they are the next thing to do:
        the setup is complete and nothing is answering. Showing them on a card
@@ -252,8 +252,8 @@
        workflow set is the wrong instruction. */
     const showStart = rt.stage === "unreachable" || rt.stage === "configured";
     const start = showStart && (rt.start || []).length
-      ? `<div class="lc-start"><b>${icon("run", 12)} Then start it yourself —
-           Builders Gate does not launch it</b>
+      ? `<div class="lc-start"><b>${icon("run", 12)} 직접 실행하세요.
+           Builders Gate는 이 프로그램을 대신 켜지 않습니다.</b>
            <ol>${rt.start.map(s => `<li>${esc(s)}</li>`).join("")}</ol></div>`
       : "";
 
@@ -267,8 +267,8 @@
       <div class="lc-what">${esc(rt.what)}</div>
       ${rt.reason ? `<div class="lc-why">${esc(rt.reason)}</div>` : ""}
       ${rt.stage === "ready"
-        ? `<div class="lc-ok">Answering at ${esc(rt.url)}. Generations through
-           this cost nothing and send nothing anywhere.</div>` : ""}
+        ? `<div class="lc-ok">${esc(rt.url)}에서 응답 중입니다. 여기서 처리하면
+           비용이 들지 않고 외부로 전송되지 않습니다.</div>` : ""}
       ${start}
       ${rt.stage === "unavailable" ? "" :
         (rt.fields || []).map(f => fieldRow(rt, f)).join("")}
@@ -276,9 +276,9 @@
         <span>${esc(rt.url || "")}</span>
         ${rt.software === "comfy" && rt.stage !== "unavailable"
           ? `<a class="lc-link" data-lc-act="inspect" data-lc-id="${esc(rt.id)}">${
-             open ? "hide details" : "what is it doing? ↓"}</a>` : ""}
+             open ? "자세히 닫기" : "상태 자세히 보기 ↓"}</a>` : ""}
         ${rt.docs_url ? `<a class="lc-link" href="${esc(rt.docs_url)}"
-            target="_blank" rel="noopener noreferrer">docs ↗</a>` : ""}
+            target="_blank" rel="noopener noreferrer">문서 ↗</a>` : ""}
       </div>
       <div data-lc-insp="${esc(rt.id)}">${open ? LC.inspectHtml(rt.id) : ""}</div>
     </div>`;
@@ -289,8 +289,8 @@
   function workflowBlock(wf) {
     if (wf.error === "not set") {
       return `<div class="lc-ib"><p class="lc-ih">${esc(wf.label)}</p>
-        <div class="lc-none">not set yet — once it is, this is where you can see
-        what is in it and which parts of it get overwritten</div></div>`;
+        <div class="lc-none">아직 설정되지 않았습니다. 설정 뒤에는 이곳에서
+        내용과 덮어쓰기 대상을 확인할 수 있습니다.</div></div>`;
     }
     if (wf.error) {
       return `<div class="lc-ib"><p class="lc-ih">${esc(wf.label)}</p>
@@ -304,23 +304,22 @@
          </span></div>`).join("");
     const others = (wf.nodes || []).filter(n => !n.injected.length);
     return `<div class="lc-ib">
-      <p class="lc-ih">${esc(wf.label)} — runs ${esc(wf.runs_when)}</p>
+      <p class="lc-ih">${esc(wf.label)} - 실행 시점: ${esc(wf.runs_when)}</p>
       ${kv([
-        ["file", wf.path],
-        ["format", wf.format === "api" ? "API format (correct)" : wf.format],
-        ["nodes", String(wf.node_count)],
-        ["loads", (wf.weights || []).join(", ")],
+        ["파일", wf.path],
+        ["형식", wf.format === "api" ? "API 형식(정상)" : wf.format],
+        ["노드", String(wf.node_count)],
+        ["불러옴", (wf.weights || []).join(", ")],
       ])}
-      ${injected ? `<p class="lc-ih" style="margin-top:9px">Builders Gate
-        overwrites these before every run</p>${injected}` : ""}
-      ${others.length ? `<p class="lc-ih" style="margin-top:9px">the rest of the
-        graph, untouched</p>${chips(others.map(n => `#${n.id} ${n.class_type}`), 18)}` : ""}
+      ${injected ? `<p class="lc-ih" style="margin-top:9px">실행 전 Builders Gate가
+        덮어쓰는 항목</p>${injected}` : ""}
+      ${others.length ? `<p class="lc-ih" style="margin-top:9px">나머지 그래프</p>${chips(others.map(n => `#${n.id} ${n.class_type}`), 18)}` : ""}
       ${(wf.warnings || []).map(w => `<div class="lc-why">${esc(w)}</div>`).join("")}
     </div>`;
   }
 
   function inspectBody(d) {
-    if (!d) return `<div class="lc-insp"><div class="lc-none">reading…</div></div>`;
+    if (!d) return `<div class="lc-insp"><div class="lc-none">읽는 중...</div></div>`;
     if (d.__error) {
       return `<div class="lc-insp"><div class="lc-why">${esc(d.__error)}</div></div>`;
     }
@@ -330,7 +329,7 @@
     const lic = d.licence || null;
 
     const server = s.ok
-      ? `<div class="lc-ib"><p class="lc-ih">the server</p>
+      ? `<div class="lc-ib"><p class="lc-ih">서버</p>
           <div class="lc-what" style="margin-bottom:6px">${esc(s.verdict)}</div>
           ${kv([
             ["ComfyUI", s.comfyui_version], ["PyTorch", s.pytorch_version],
@@ -339,21 +338,20 @@
           ${(s.devices || []).length ? chips((s.devices || []).map(x =>
             `${x.name || x.type}${x.vram_total_gb ? ` · ${x.vram_total_gb} GB` : ""}`)) : ""}
         </div>`
-      : `<div class="lc-ib"><p class="lc-ih">the server</p>
-          <div class="lc-why">${esc(s.error || "not reachable")}</div></div>`;
+      : `<div class="lc-ib"><p class="lc-ih">서버</p>
+          <div class="lc-why">${esc(s.error || "연결되지 않음")}</div></div>`;
 
     const busy = (d.queue && d.queue.ok)
-      ? `<div class="lc-ib"><p class="lc-ih">right now</p>
-          <div class="lc-what">${esc(d.queue.verdict)}. A local generator that
-          looks frozen is usually third in a queue.</div></div>` : "";
+      ? `<div class="lc-ib"><p class="lc-ih">현재 상태</p>
+          <div class="lc-what">${esc(d.queue.verdict)}. 로컬 생성기가 멈춘 것처럼
+          보여도 큐에서 기다리는 중일 수 있습니다.</div></div>` : "";
 
     const licence = lic
-      ? `<div class="lc-ib"><p class="lc-ih">what you may ship</p>
-          ${kv([["declared model", lic.model || "(none)"],
-                ["licence", lic.code], ["means", lic.summary]])}
+      ? `<div class="lc-ib"><p class="lc-ih">배포 가능 범위</p>
+          ${kv([["선언 모델", lic.model || "(없음)"],
+                ["라이선스", lic.code], ["의미", lic.summary]])}
           ${lic.url ? `<div class="lc-chips"><a class="lc-link"
-             href="${esc(lic.url)}" target="_blank" rel="noopener noreferrer">the
-             licence itself ↗</a></div>` : ""}
+             href="${esc(lic.url)}" target="_blank" rel="noopener noreferrer">라이선스 원문 ↗</a></div>` : ""}
         </div>` : "";
 
     /* Only asked when the server answered its stats — see localruntimes.inspect.
@@ -362,26 +360,25 @@
     const groups = Object.keys(cat).filter(k => (cat[k].items || []).length);
     const catalogue = !s.ok ? ""
       : groups.length
-        ? `<div class="lc-ib"><p class="lc-ih">what this install can see</p>
+        ? `<div class="lc-ib"><p class="lc-ih">이 설치가 볼 수 있는 항목</p>
             ${groups.map(k => `<div style="margin-bottom:7px">
               <div class="lc-fhelp" style="margin-bottom:3px"><b>${esc(k)}</b> —
                 ${esc(cat[k].help)}</div>${chips(cat[k].items)}</div>`).join("")}
           </div>`
-        : `<div class="lc-ib"><p class="lc-ih">what this install can see</p>
-            <div class="lc-none">this build did not answer the node query — that
-            is a difference in ComfyUI versions, not a fault in your setup</div>
+        : `<div class="lc-ib"><p class="lc-ih">이 설치가 볼 수 있는 항목</p>
+            <div class="lc-none">이 빌드가 노드 조회에 응답하지 않았습니다. 보통
+            설정 문제가 아니라 ComfyUI 버전 차이입니다.</div>
           </div>`;
 
     const runs = (hist.runs || []).filter(r => r.images.length);
     const recent = runs.length
-      ? `<div class="lc-ib"><p class="lc-ih">the last few things it made</p>
+      ? `<div class="lc-ib"><p class="lc-ih">최근 생성물</p>
           <div class="lc-shots">${runs.slice(0, 4).flatMap(r =>
             r.images.slice(0, 2).map(im =>
               `<img loading="lazy" src="${esc(im.url)}" alt="${esc(im.filename)}"
                     title="${esc(im.filename)}">`)).join("")}</div>
-          <div class="lc-fnote">served straight from ComfyUI's own output
-            folder — everything it made, not only what Builders Gate asked
-            for</div></div>` : "";
+          <div class="lc-fnote">ComfyUI 출력 폴더에서 바로 표시합니다. Builders
+            Gate가 요청한 항목만이 아니라 실제 생성물이 함께 보일 수 있습니다.</div></div>` : "";
 
     return `<div class="lc-insp">
       ${server}${busy}
@@ -396,7 +393,7 @@
     const m = r.mcp || {};
     const wired = !!m.ok;
     const lamp = !r.installed ? "" : (wired ? "good" : "warn");
-    const word = !r.installed ? "not installed" : (wired ? "wired" : "check wiring");
+    const word = !r.installed ? "미설치" : (wired ? "연결됨" : "연결 확인 필요");
     return `<div class="lc-card s-${wired ? "ready" : (r.installed ? "unhealthy" : "unconfigured")}"
                  data-lc-agent="${esc(r.id)}">
       <div class="lc-top">
@@ -405,33 +402,33 @@
         <span class="lc-lamp ${lamp}">${esc(word)}</span>
       </div>
       <div class="lc-pills">
-        ${r.default_runner ? `<span class="lc-pill">default runner</span>` : ""}
-        <span class="lc-pill">${r.steerable ? "steerable mid-run" : "no live steering"}</span>
-        <span class="lc-pill">${r.cost_tracked ? "cost tracked" : "cost NOT tracked"}</span>
+        ${r.default_runner ? `<span class="lc-pill">기본 실행기</span>` : ""}
+        <span class="lc-pill">${r.steerable ? "실행 중 지시 가능" : "실행 중 지시 없음"}</span>
+        <span class="lc-pill">${r.cost_tracked ? "비용 추적됨" : "비용 추적 없음"}</span>
       </div>
       <div class="lc-what"><span>${esc(r.used_for)}</span>
         ${r.note ? `<span>${esc(r.note)}</span>` : ""}</div>
       ${r.installed
-        ? kv([["found at", r.path]])
-        : `<div class="lc-why">Not on PATH. Install it and reload this page —
-             nothing here installs software.</div>`}
+        ? kv([["위치", r.path]])
+        : `<div class="lc-why">PATH에서 찾을 수 없습니다. 설치 뒤 이 페이지를
+             새로고침하세요. 이 화면은 소프트웨어를 직접 설치하지 않습니다.</div>`}
 
       <div class="lc-f">
-        <div class="lc-flab"><span class="n">Builders Gate MCP server</span>
+        <div class="lc-flab"><span class="n">Builders Gate MCP 서버</span>
           <span class="v">${esc(m.scope_note || "")}</span></div>
         <div class="lc-fhelp">${esc(m.how || "")}</div>
         <div class="${wired ? "lc-ok" : "lc-why"}">${esc(m.verdict || "")}</div>
-        ${m.command ? kv([["registered command", m.command],
-                          ["args", (m.args || []).join(" ")],
-                          ["config file", m.path]]) : ""}
+        ${m.command ? kv([["등록 명령", m.command],
+                          ["인수", (m.args || []).join(" ")],
+                          ["설정 파일", m.path]]) : ""}
         ${!wired ? `<div class="lc-fhelp" style="margin-top:8px">${esc(why || "")}</div>` : ""}
         <div class="lc-cmd">${esc(m.command_line || "")}</div>
         <div class="lc-row">
           <button class="lc-btn go" data-lc-act="register" data-lc-id="${esc(r.id)}"
-            ${m.can_register ? "" : "disabled"}>${m.found ? "re-register, pinned" : "register"}</button>
-          ${m.found ? `<button class="lc-btn" data-lc-act="verify" data-lc-id="${esc(r.id)}">verify</button>` : ""}
-          ${m.found ? `<button class="lc-btn" data-lc-act="unregister" data-lc-id="${esc(r.id)}">remove</button>` : ""}
-          <button class="lc-btn" data-lc-act="copy" data-lc-id="${esc(r.id)}">copy the command</button>
+            ${m.can_register ? "" : "disabled"}>${m.found ? "다시 등록" : "등록"}</button>
+          ${m.found ? `<button class="lc-btn" data-lc-act="verify" data-lc-id="${esc(r.id)}">확인</button>` : ""}
+          ${m.found ? `<button class="lc-btn" data-lc-act="unregister" data-lc-id="${esc(r.id)}">제거</button>` : ""}
+          <button class="lc-btn" data-lc-act="copy" data-lc-id="${esc(r.id)}">명령 복사</button>
         </div>
         <div class="lc-fnote" data-lc-said="${esc(r.id)}"></div>
       </div>
@@ -497,8 +494,8 @@
       const el = host || document.getElementById("lc-host");
       if (!this.mount("generators", el)) return false;
       if (!this.data) {
-        el.innerHTML = `<div class="lc-wrap"><div class="lc-none">reading local
-          setup…</div></div>`;
+        el.innerHTML = `<div class="lc-wrap"><div class="lc-none">로컬 설정을
+          읽는 중...</div></div>`;
       }
       await this.load(true);
       this.paint("generators");
@@ -514,8 +511,8 @@
       const el = host || document.getElementById("ag-host");
       if (!this.mount("agents", el)) return false;
       if (!this.agents) {
-        el.innerHTML = `<div class="lc-wrap"><div class="lc-none">reading the
-          coding-agent CLIs…</div></div>`;
+        el.innerHTML = `<div class="lc-wrap"><div class="lc-none">코딩 에이전트
+          CLI를 읽는 중...</div></div>`;
       }
       await this.loadAgents(true);
       this.paint("agents");
@@ -741,7 +738,7 @@
       this.data = r.data; this._read = Date.now();
       delete this._insp[runtime];
       this.repaint();
-      say("cleared", "ok");
+      say("지웠습니다", "ok");
     },
 
     /* ---- coding agents ---- */
