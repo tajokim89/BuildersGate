@@ -59,9 +59,9 @@ SETTING = "gate.mode"
 DEFAULT = AGENT
 
 LABELS = {
-    NONE: "no gate — an agent's own word closes its item",
-    AGENT: "agent gate — the QA seat verifies every deliverable",
-    BUILDERS: "builder's gate — you approve before anything counts as done",
+    NONE: "게이트 없음 - 에이전트의 완료 보고로 항목을 닫습니다",
+    AGENT: "에이전트 게이트 - QA 좌석이 모든 산출물을 검증합니다",
+    BUILDERS: "빌더 게이트 - 사용자가 승인해야 완료로 인정합니다",
 }
 
 # The pre-existing kill switch. It predates this module, it is in the docs, and

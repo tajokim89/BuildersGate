@@ -222,30 +222,28 @@ SETTINGS: tuple[Setting, ...] = (
         key="dispatch.model", group="Dispatch", kind=STRING, default="sonnet",
         store=("registry", "dispatch.model"), scope=MACHINE,
         env="BGATE_MODEL", human_only=True,
-        help="The model every seat runs on unless overridden below. Nothing "
-             "used to pass --model at all, so every agent silently inherited "
-             "whatever the CLI defaulted to — a night of 82 runs went out on "
-             "opus-5[1m] and moved 1.19 BILLION input-side tokens in eight "
-             "hours. A seat that edits GDScript does not need the biggest "
-             "model; naming one here is what stops the default deciding."),
+        help=("아래에서 따로 지정하지 않은 좌석이 사용할 모델입니다. Codex 실행기에서는 "
+              "gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna 같은 Codex 모델을 "
+              "그대로 넘깁니다. 옛 Claude 등급명이 남아 있더라도 투입 시 좌석별 "
+              "BGATE_CODEX_MODEL_* 값으로 바꿉니다."),
+    ),
     Setting(
         key="dispatch.runner", group="Dispatch", kind=ENUM, default="claude",
         choices=("claude", "codex"),
         store=("registry", "dispatch.runner"), scope=MACHINE,
         env="BGATE_DISPATCH_RUNNER", human_only=True,
-        help="Which CLI non-art board agents run on. `claude` is the upstream "
-             "default and keeps live steering and cost tracking. `codex` uses "
-             "the local Codex CLI login instead of any API key, but this "
-             "project has only validated Codex for the art seat so far; "
-             "non-art Codex runs are local-machine opt-in, cost-not-tracked, "
-             "and cannot be steered mid-run."),
+        help=("아트 외 보드 에이전트가 사용할 CLI입니다. `codex`는 API 키가 아니라 "
+              "로컬 Codex CLI 로그인을 사용합니다. 현재 이 Mac에서는 환경 변수로 "
+              "`codex`가 고정되어 있습니다. 비용 추적과 실행 중 지시는 Claude 쪽 "
+              "기능이라 Codex 실행에는 적용되지 않습니다."),
+    ),
     Setting(
         key="dispatch.model_art", group="Dispatch", kind=STRING, default="opus",
         store=("registry", "dispatch.model_art"), scope=MACHINE,
         env="BGATE_MODEL_ART", human_only=True,
-        help="The art seat's model, because art is the one seat whose output "
-             "is judged on taste rather than on whether it parses. Blank "
-             "falls back to dispatch.model."),
+        help=("아트 좌석이 사용할 모델입니다. Codex 아트 실행에는 gpt-5.6-luna 같은 "
+              "Codex 모델을 넣습니다. 비워 두면 dispatch.model 값을 따릅니다."),
+    ),
     Setting(
         key="dispatch.max_turns", group="Dispatch", kind=INT, default=120,
         minimum=0, maximum=1000, store=("registry", "dispatch.max_turns"),
@@ -325,12 +323,11 @@ SETTINGS: tuple[Setting, ...] = (
         choices=("claude", "codex"),
         store=("registry", "art.runner"), scope=MACHINE,
         env="BGATE_ART_RUNNER",
-        help="Which CLI the art seat's agents run on. `codex` is here for one "
-             "reason: it generates images itself, which is what art.image_"
-             "backend switches between. It cannot be steered mid-run and it "
-             "reports tokens rather than dollars, so the per-run cost ceiling "
-             "does not apply to it — those runs are marked cost-not-tracked "
-             "wherever they are shown. Every other seat stays on claude."),
+        help=("아트 좌석 에이전트가 사용할 CLI입니다. `codex`는 이미지를 자체 생성할 "
+              "수 있어서 art.image_backend=native와 함께 씁니다. 실행 중 지시와 "
+              "실행별 비용 한도는 적용되지 않습니다. 아트 외 좌석은 "
+              "dispatch.runner 값을 따릅니다."),
+    ),
     Setting(
         key="art.image_backend", group="Art", kind=ENUM, default="bgate",
         choices=("bgate", "native"),

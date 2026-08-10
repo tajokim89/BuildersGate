@@ -247,18 +247,16 @@ WIRINGS: dict[str, Wiring] = {
     "claude": Wiring(
         id="claude", label="Claude Code",
         config=_claude_config, read=_claude_read, argv=_claude_argv,
-        how="Registers the Builders Gate MCP server at USER scope, so every "
-            "game project on this machine gets the tools — including projects "
-            "that do not exist yet.",
-        scope_note="user scope · ~/.claude.json"),
+        how=("Builders Gate MCP 서버를 사용자 범위에 등록합니다. 이 기기의 "
+             "모든 게임 프로젝트가 도구를 사용할 수 있습니다."),
+        scope_note="사용자 범위 · ~/.claude.json"),
     "codex": Wiring(
         id="codex", label="Codex CLI",
         config=_codex_config, read=_codex_read, argv=_codex_argv,
-        how="Writes a [mcp_servers.builders-gate] table into Codex's own "
-            "config. Separate from the per-run wiring a dispatched Codex agent "
-            "gets — that one is injected in memory and leaves nothing behind, "
-            "so it does not help your own `codex` sessions.",
-        scope_note="user scope · ~/.codex/config.toml"),
+        how=("Codex 자체 설정에 [mcp_servers.builders-gate] 항목을 씁니다. "
+             "투입 실행마다 주입되는 임시 MCP 연결과는 별개라서, 사용자가 직접 "
+             "여는 Codex 세션에도 도구가 보입니다."),
+        scope_note="사용자 범위 · ~/.codex/config.toml"),
 }
 
 _UNREGISTER = {"claude": _claude_unregister, "codex": _codex_unregister}
@@ -299,39 +297,32 @@ def _judge(entry: dict) -> dict:
     """
     if not entry.get("found"):
         return {"state": "absent",
-                "verdict": "not registered — your own sessions of this CLI have "
-                           "no Builders Gate tools",
+                "verdict": "등록되지 않았습니다. 사용자가 직접 여는 이 CLI 세션에는 "
+                           "Builders Gate 도구가 보이지 않습니다.",
                 "ok": False}
     command = str(entry.get("command") or "")
     args = list(entry.get("args") or [])
     if _is_bare(command):
         return {"state": "bare",
-                "verdict": f"registered, but its command is a bare '{command}'. "
-                           "This is the documented Windows failure: the CLI "
-                           "resolves that against whatever is first on PATH when "
-                           "it launches the server, which is routinely not the "
-                           "environment Builders Gate was installed into. It "
-                           "reports 'failed to connect' and points nowhere near "
-                           "the interpreter.",
+                "verdict": f"등록은 되어 있지만 명령이 '{command}'만 가리킵니다. "
+                           "CLI가 서버를 띄울 때 PATH의 첫 실행 파일을 잡으므로 "
+                           "Builders Gate가 설치된 환경과 달라질 수 있습니다. "
+                           "그 경우 원인은 인터프리터인데도 연결 실패처럼 보입니다.",
                 "ok": False}
     if args and args != MODULE_ARGS:
         return {"state": "odd-args",
-                "verdict": f"registered, but it runs {' '.join(args)} rather "
-                           f"than {' '.join(MODULE_ARGS)}. That may be "
-                           "deliberate; nothing here will change it without "
-                           "being asked.",
+                "verdict": f"등록은 되어 있지만 {' '.join(MODULE_ARGS)} 대신 "
+                           f"{' '.join(args)}를 실행합니다. 의도한 설정일 수 있으므로 "
+                           "요청 없이 바꾸지 않습니다.",
                 "ok": False}
     if not _same_file(command, interpreter()):
         return {"state": "other-interpreter",
-                "verdict": f"registered against a different interpreter than "
-                           f"this dashboard is running on. It will work if that "
-                           f"one also has Builders Gate installed, and fail with "
-                           f"'failed to connect' if it does not. Registered: "
-                           f"{command}",
+                "verdict": f"이 대시보드와 다른 인터프리터에 등록되어 있습니다. "
+                           f"그 인터프리터에도 Builders Gate가 설치되어 있으면 "
+                           f"작동하지만, 없으면 연결 실패가 납니다. 등록값: {command}",
                 "ok": False}
     return {"state": "pinned",
-            "verdict": "registered at user scope, pinned to the same interpreter "
-                       "this dashboard runs on",
+            "verdict": "사용자 범위에 등록되어 있고, 이 대시보드와 같은 인터프리터에 고정되어 있습니다.",
             "ok": True}
 
 
@@ -365,19 +356,19 @@ def _used_for(runner_id: str) -> str:
                 or _runners.DEFAULT_RUNNER).strip()
     bits = []
     if runner_id == brainstorm:
-        bits.append("The brainstorm room uses this")
+        bits.append("브레인스토밍 방이 사용합니다")
     if runner_id == art:
-        bits.append("the configured art seat uses this")
+        bits.append("아트 좌석이 사용합니다")
     if runner_id == dispatch:
-        bits.append("dispatched board agents use this by default")
+        bits.append("보드에 투입되는 에이전트의 기본 실행기입니다")
     if bits:
         suffix = "" if runner_id == dispatch else \
-            ". Other board seats stay on the default runner."
+            ". 다른 보드 좌석은 기본 실행기를 따릅니다."
         return "; ".join(bits) + suffix
     if runner_id == _runners.DEFAULT_RUNNER and dispatch == _runners.DEFAULT_RUNNER:
-        return ("Dispatched board agents use this by default. Seat-specific "
-                "settings can route a supported seat elsewhere.")
-    return "An alternative runner for dispatched agents."
+        return ("보드에 투입되는 에이전트의 기본 실행기입니다. 지원되는 좌석은 "
+                "좌석별 설정으로 다른 실행기를 쓸 수 있습니다.")
+    return "설치되어 있어도 현재 기본 실행기는 아닙니다."
 
 
 def status() -> list[dict]:
@@ -390,7 +381,11 @@ def status() -> list[dict]:
     dispatch_runner = (os.environ.get("BGATE_DISPATCH_RUNNER")
                        or _runners.DEFAULT_RUNNER).strip()
     rows = []
-    for runner_id, runner in _runners.RUNNERS.items():
+    ordered = sorted(
+        _runners.RUNNERS.items(),
+        key=lambda kv: (kv[0] != dispatch_runner, kv[0] != "codex", kv[0]),
+    )
+    for runner_id, runner in ordered:
         one = WIRINGS.get(runner_id)
         detected = found.get(runner_id) or {}
         try:
@@ -399,7 +394,7 @@ def status() -> list[dict]:
             entry = {"found": False, "error": f"{type(exc).__name__}: {exc}"}
         judged = _judge(entry) if one else {
             "state": "unknown", "ok": False,
-            "verdict": "this CLI has no MCP wiring described here yet"}
+            "verdict": "이 CLI에 대한 MCP 연결 방식이 아직 정의되지 않았습니다."}
         rows.append({
             "id": runner_id,
             "label": one.label if one else runner_id,
@@ -434,11 +429,10 @@ def payload() -> dict:
         # The one fact that makes the whole section legible: WHY an absolute
         # path. Stated once, here, rather than in the three places it is shown.
         "why_absolute": (
-            "A bare `python` resolves against whatever is first on PATH when "
-            "the CLI launches the server — routinely not the environment "
-            "Builders Gate was installed into. The CLI then reports 'failed to "
-            "connect', which points nowhere near the interpreter. Every "
-            "registration written from here names this exact interpreter."),
+            "`python`만 쓰면 CLI가 서버를 띄울 때 PATH에서 먼저 잡히는 실행 파일을 "
+            "사용합니다. 대개 Builders Gate가 설치된 환경과 다릅니다. 그러면 "
+            "원인은 인터프리터인데도 연결 실패처럼 보입니다. 여기서 작성하는 등록은 "
+            "모두 이 정확한 인터프리터를 지정합니다."),
     }
 
 

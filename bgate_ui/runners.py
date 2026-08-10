@@ -409,15 +409,15 @@ RUNNERS: dict[str, Runner] = {
         prompt_via="stream", build_args=_claude_args,
         chat=Chat(build_args=_claude_chat_args, prompt_via="stream",
                   cost_tracked=True, readonly_by=CLAUDE_READONLY_BY),
-        note="The default. Live steering and per-run cost tracking both work."),
+        note=("실행 중 지시와 실행별 비용 추적을 지원합니다. 현재 선택 여부는 "
+              "역할 표시를 따릅니다.")),
     "codex": Runner(
         name="codex", find=lambda: find_codex(), steerable=False, cost_tracked=False,
         prompt_via="stdin_once", requires_git_repo=True, build_args=_codex_args,
         chat=Chat(build_args=_codex_chat_args, prompt_via="stdin_once",
                   cost_tracked=False, readonly_by=CODEX_READONLY_BY),
-        note="Generates images natively. No live steering, and it reports "
-             "tokens rather than dollars — the per-run cost ceiling cannot "
-             "bite, so runs on it are marked cost-not-tracked."),
+        note=("이미지를 자체 생성합니다. 실행 중 지시는 지원하지 않고 비용 대신 "
+              "토큰을 보고하므로 실행별 비용 한도는 적용되지 않습니다.")),
 }
 
 DEFAULT_RUNNER = "claude"
