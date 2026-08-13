@@ -9,8 +9,8 @@ MCP server, and platform detail.
 | Thing | Needed for | Notes |
 |---|---|---|
 | Python 3.11+ | everything | `pip install -e .` pulls mcp, fastapi, uvicorn, Pillow, openai |
-| An MCP client | agents | [Claude Code](https://claude.com/claude-code) is what it is developed against |
-| [Godot 4.x](https://godotengine.org) | the core loop | Portable exe is fine. Discovery checks common install dirs, or set `BGATE_GODOT` |
+| An MCP client | agents | This checkout uses the local Codex CLI |
+| [Godot 4.x](https://godotengine.org) | the core loop | On macOS the expected path is `/Applications/Godot.app/Contents/MacOS/Godot`, or set `BGATE_GODOT` |
 | Godot Web export templates | `bgate publish` | A separate ~1 GB download from inside the editor |
 | [Blender 4.2+](https://blender.org) | the 3D leg, optional | Or set `BGATE_BLENDER` |
 | `ffmpeg` + `ffprobe` on PATH | playtest capture, optional | Screen capture, frame extraction, reading a recording's duration |
@@ -43,16 +43,17 @@ provider has a key.
 
 ## Platform support
 
-**Windows is the supported platform.** It is what everything is developed and
-verified on.
+**macOS is the verified platform for this checkout.** The verified path is
+`bgate serve` in a browser, local Codex CLI for agents, Codex MCP registration,
+Godot headless checks, and optional Tailscale Serve for tailnet access.
+
+**Windows remains a compatibility and release-packaging surface.** The
+standalone Windows zip and Windows capture details are not part of the Mac mini
+baseline.
 
 **Linux is best-effort.** CI runs the suite there but marks it
-`continue-on-error`. Parts of the product shell out to Windows tooling
-(`taskkill`, `tasklist`). The tests that need it skip cleanly. The rest has
-never been depended on there.
-
-**macOS is untested.** Reports from Linux and macOS are welcome. See
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+`continue-on-error`. Treat Linux failures as useful reports, not as a guaranteed
+supported path.
 
 ## bgate doctor
 
@@ -86,18 +87,18 @@ byte you wrote. It:
 - creates `.bgate/game.db`
 - merges the API-key ignore rules into your existing `.gitignore`, inside a
   marked block
-- appends a `CLAUDE.md` briefing the same way
+- appends an `AGENTS.md` briefing the same way
 - prints what it detected: Godot version, main scene, 2D vs 3D, and scene,
   script and asset counts
 
 Safe to re-run. The second run refreshes the marked blocks in place instead of
 stacking a second copy.
 
-## CLAUDE.md
+## AGENTS.md
 
-Both `init` and `adopt` stamp a `CLAUDE.md` into the project. That file is the
-instructions for the Claude Code session working in *your game*: what a seat is,
-how a work item is created and closed, what the bible and lore are for, the art
+Both `init` and `adopt` stamp an `AGENTS.md` into the project. That file is the
+instructions for the Codex session working in *your game*: what a seat is, how a
+work item is created and closed, what the bible and lore are for, the art
 pipeline, and what not to do. It is the first thing to read.
 
 ## Switching between projects
@@ -125,20 +126,13 @@ function of call order.
 ## Registering the MCP server
 
 ```bash
-claude mcp add builders-gate --scope user -- <abs-python> -m bgate_mcp.server
-bgate hook-install <game-project>         # lane/lock teeth
-bgate hook-status <game-project>          # proves enforcement is live
+codex mcp add builders-gate -- <abs-python> -m bgate_mcp.server
 ```
 
-Registration must use the ABSOLUTE python path. The claude CLI's health check
-resolves a bare `python` differently than your shell and reports "failed to
-connect" against a server that runs fine.
+Registration must use the ABSOLUTE python path from the Builders Gate virtual
+environment. A bare `python` can resolve to a different interpreter when Codex
+starts the MCP server and make a working server look disconnected.
 
-`hook-install` writes a PreToolUse hook into `.claude/settings.json`. It asks
-`seat_can_write` before every Bash, Write and Edit call, and blocks out-of-lane
-or lock-violating writes with exit 2 plus guidance.
-
-Enforcement activates only when a session sets `BGATE_SEAT=<role>`. With no seat
-adopted, outside a bgate project, or on anything unexpected, the hook is inert
-and fails open. A crashing hook must never dam a session. `hook-status` is the
-only thing that proves enforcement is actually live, and it exits 1 if it is not.
+`hook-install` is a legacy hook path. Do not use it as the default macOS Codex
+setup. Codex gets the MCP server through `codex mcp add`, and project rules
+through `AGENTS.md`.

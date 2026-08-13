@@ -11,7 +11,7 @@ There is a [glossary](glossary.md) for every term below.
 
 ## The problem this solves
 
-Claude writes GDScript fine. These are the things that go wrong after that, and
+Codex writes GDScript fine. These are the things that go wrong after that, and
 what this does about each one.
 
 | Problem | What this does |
@@ -33,10 +33,10 @@ This is more machinery than a small project needs.
 ## What an MCP server is
 
 MCP, the Model Context Protocol, is a standard for giving an AI assistant tools
-that live outside itself. Normally Claude Code can read files, edit files, and
+that live outside itself. Normally Codex can read files, edit files, and
 run shell commands. That is its whole vocabulary. An MCP server adds verbs.
 
-You register one, once. From then on, every Claude session on your machine can
+You register one, once. From then on, every Codex session on your machine can
 call the tools it exposes, the same way it calls "read a file". A "custom MCP"
 is nothing more exotic than a server somebody wrote for their own domain instead
 of using an off-the-shelf one.
@@ -96,7 +96,7 @@ not. When you click Dispatch on a work item, `bgate_ui/dispatch.py` does this:
    spending an agent on it is the exact gold-plating tiers exist to stop.
 2. Checks the **concurrency cap** (default 4). The dashboard's "dispatch all"
    loops every queued item with no cap of its own, and twenty queued items would
-   otherwise be twenty Claude trees on one laptop.
+   otherwise be twenty runner processes on one laptop.
 3. Checks the **spend ceilings**: per item, per day, per project.
 4. Refuses a **dirty git tree** unless you insist. A run started on top of your
    uncommitted work produces a diff that cannot tell the agent's edits from
@@ -105,7 +105,7 @@ not. When you click Dispatch on a work item, `bgate_ui/dispatch.py` does this:
    undoable with a scoped revert. (A per-item git worktree is available behind
    `BGATE_GIT_ISOLATION=1`; it is off by default because moving the agent's
    working directory is a bigger change to a run than most projects want.)
-6. Spawns an actual `claude` process, with `BGATE_SEAT`, `BGATE_ROOT`,
+6. Spawns an actual Codex runner process, with `BGATE_SEAT`, `BGATE_ROOT`,
    `BGATE_WORK_ITEM`, and `BGATE_ACTOR=agent:item-<id>` in its environment. That
    last one is what makes "approved" mean anything: without it a spawned agent
    inherits your identity and can approve its own work. It did, until that line
@@ -125,10 +125,10 @@ killed or wedged agent looks like from outside.
 
 ### 0. What you need
 
-Python 3.11+, Godot 4.x, and an MCP client. Claude Code is what this is
-developed against. Windows is the supported platform; Linux is best-effort and
-macOS is untested. Blender is optional and only matters for the 3D leg. An image
-API key (OpenAI or Krea) is optional and only matters for generated art.
+Python 3.11+, Godot 4.x, and the local Codex CLI. This checkout is verified on
+macOS through the browser dashboard, Codex MCP, and Godot headless checks.
+Blender is optional and only matters for the 3D leg. Image provider keys are
+optional when the art seat uses Codex native image generation.
 
 ```bash
 git clone https://github.com/Thepizzapie/BuildersGate
@@ -181,8 +181,8 @@ localhost.
 agents finishing, work parked for your approval, a chain that has stopped moving,
 a question the director wants answered. It reads the same event log the follow-up
 router does. It can only tell you things while the page is open, though, so if you
-walk away: `bgate app` puts the unread count in the window title, and one optional
-webhook (Settings → Notifications) is the only channel that leaves the machine.
+walk away, use Tailscale Serve for tailnet access or one optional webhook
+(Settings → Notifications). The macOS path is `bgate serve`, not `bgate app`.
 
 **Settings** is every switch in one place, grouped, each row saying whether its
 value is the default, something you stored, or an environment variable overriding
@@ -190,30 +190,23 @@ both — so a shell profile can never quietly disagree with what the panel shows
 The two that decide how much runs without you are `autopilot` (does work START
 without you) and the approval gate (does it FINISH without you).
 
-### 3. Register the server and install the hook
+### 3. Register the server for Codex
 
 ```bash
-claude mcp add builders-gate --scope user -- <absolute-python-path> -m bgate_mcp.server
-bgate hook-install .
-bgate hook-status .
+codex mcp add builders-gate -- <absolute-python-path> -m bgate_mcp.server
 ```
 
-Use the **absolute** python path. The Claude CLI's health check resolves a bare
-`python` differently than your shell does, and reports "failed to connect"
-against a server that runs fine.
+Use the **absolute** python path from the Builders Gate virtual environment. A
+bare `python` can resolve to a different interpreter when Codex starts the MCP
+server and make a working server look disconnected.
 
-`hook-install` writes a PreToolUse hook into `.claude/settings.json` that asks
-`seat_can_write` before every Bash, Write, or Edit, and blocks out-of-lane or
-lock-violating writes. It is **inert unless a session sets `BGATE_SEAT`**, and it
-fails open on anything unexpected, because a crashing hook must never dam a
-session.
-`hook-status` is the only thing that proves enforcement is actually live; it
-exits 1 if it is not.
+The project `AGENTS.md` is the Codex-side rule file. `hook-install` is the legacy
+hook path and is not part of the default macOS Codex setup.
 
 ### 4. Draw the cut line before you build anything
 
 This is the step everyone skips and the one that pays for itself fastest. In a
-Claude session, or in the dashboard's World Bible view:
+Codex session, or in the dashboard's World Bible view:
 
 - Write your pillars: the three or four things the game is actually about.
 - Write your scope tiers, ranked. "Core loop", "first vertical slice", "polish",
@@ -292,7 +285,7 @@ leaves a gap something restarts through:
 
 1. **auto-deploy off first** — killing agents while the loop is on just
    dispatches a replacement into the gap;
-2. every live agent killed **by process tree**, not just the `claude` parent
+2. every live agent killed **by process tree**, not just the runner parent
    (its MCP children hold the pipe open and outlive it otherwise);
 3. every pid in the project's ledger reaped, including ones a *previous*
    dashboard spawned — the ledger is on disk and outlives the process that
@@ -327,7 +320,7 @@ variables are escape hatches for a machine that needs different numbers.
 
 ## Inventory before you plan
 
-The stamped `CLAUDE.md` names the calls; this is why they are worth the tokens.
+The stamped `AGENTS.md` names the calls; this is why they are worth the tokens.
 
 Measured across a week of real builds, the single most expensive habit was not
 running them. Each is one call and each returns a *list* rather than a verdict:

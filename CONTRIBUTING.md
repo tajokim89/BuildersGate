@@ -28,7 +28,7 @@ unsolicited refactors.
 
 Use the bug report form under **Issues**. Whatever route you take, include:
 
-- **OS and version** (Windows 11, Ubuntu 24.04, …)
+- **OS and version** (macOS 15, Windows 11, Ubuntu 24.04, ...)
 - **Python version**, from `python -V`
 - **`bgate doctor --json` output.** It answers "is the toolchain even here" in
   one pass, and most first-run reports are answered by it. It never prints your
@@ -37,12 +37,13 @@ Use the bug report form under **Issues**. Whatever route you take, include:
 
 ## Platform
 
-**Windows is the primary and only supported platform.** It is what everything is
-developed and verified on, and parts of the product shell out to Windows tooling
-(`taskkill`, `tasklist`). Linux is best-effort: the suite runs there but
-marks it `continue-on-error`, and tests that need Windows tooling skip cleanly.
-macOS is untested. Reports from Linux and macOS are welcome and will be read;
-they are not promised a fix.
+**This checkout is verified on macOS for the browser dashboard, local Codex CLI,
+Codex MCP registration, and Godot headless checks.** Some older subsystems and
+release packaging still carry Windows-specific paths. Treat those as separate
+compatibility surfaces, not the default local workflow.
+
+Linux remains best-effort. CI runs there but marks it `continue-on-error`, and
+tests that need platform-specific tooling skip cleanly.
 
 ## Running the tests
 
@@ -71,8 +72,8 @@ loop is the `wheel-smoke` job in CI, and you can run it yourself:
 
 ```bash
 python -m build --wheel
-python -m venv .wheelenv && .wheelenv/Scripts/python -m pip install dist/*.whl
-.wheelenv/Scripts/python packaging/smoke_wheel.py
+python -m venv .wheelenv && .wheelenv/bin/python -m pip install dist/*.whl
+.wheelenv/bin/python packaging/smoke_wheel.py
 ```
 
 ## Pull requests

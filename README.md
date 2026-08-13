@@ -2,24 +2,25 @@
 
 [![builders-gate.com](https://img.shields.io/badge/site-builders--gate.com-ff6a3d)](https://builders-gate.com)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
-[![Platform: Windows primary](https://img.shields.io/badge/platform-Windows%20primary-lightgrey)](docs/setup.md#platform-support)
+[![Platform: macOS verified](https://img.shields.io/badge/platform-macOS%20verified-lightgrey)](docs/setup.md#platform-support)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Dev streams on Twitch](https://img.shields.io/badge/twitch-thepizzzapie-9146FF)](https://twitch.tv/thepizzzapie)
 
-Builders Gate is an MCP server for building games with Claude Code.
+Builders Gate is an MCP server for building games with coding-agent CLIs. This
+checkout is configured and verified for a macOS local-Codex workflow.
 **[builders-gate.com](https://builders-gate.com)**
 
-It gives Claude 144 tools scoped to one game project: a design database, a work
+It gives the agent 144 tools scoped to one game project: a design database, a work
 queue, reference-pinned art and music generation, Godot and Blender adapters, and
 playtest capture. State lives in one SQLite file in the project.
 
-You run several Claude Code sessions at once, each assigned a role: art,
+You run seat workers through the local Codex CLI, each assigned a role: art,
 gameplay, narrative, QA, audio, tech. They read and write the same database, so
 they do not contradict each other, and they cannot edit the same files at the
-same time. A local dashboard shows what each one is doing and is where you
-dispatch work and approve output.
+same time. A local browser dashboard shows what each one is doing and is where
+you dispatch work and approve output.
 
-Your own Claude session uses the same tools and the same database. Asking it what
+Your own Codex session uses the same tools and the same database. Asking it what
 is left before the vertical slice reads the queue and the scope tiers, not the
 chat history.
 
@@ -77,14 +78,13 @@ you review first.
        alt="The same view in the dark, light and orbit themes">
 </p>
 
-**Who it is for:** people running Claude Code who are building a game and want
-more than one session working on it. It is more machinery than a small project
-needs.
+**Who it is for:** people running local Codex CLI on macOS who are building a
+game and want more than one seat worker on it. It is more machinery than a small
+project needs.
 
-> **Setting this up with Claude?** Point it at
-> [`CLAUDE.md`](CLAUDE.md) in this repo. It is written for an
-> assistant doing the install on your behalf, including the two
-> mistakes that waste the most time.
+> **Setting this up with Codex?** Point it at [`AGENTS.md`](AGENTS.md). It names
+> the macOS paths, Codex MCP registration, dashboard command, and the constraints
+> this checkout is expected to keep.
 >
 > **New to this?** Start at **[`docs/start-here.md`](docs/start-here.md)**. It
 > assumes nothing and defines the vocabulary once. Unfamiliar term?
@@ -92,8 +92,10 @@ needs.
 
 ## Project status
 
-Honest version, 2026-07-27, first public release. This is a solo project that has
-built real games on one machine, and it shows in both directions.
+Honest version, 2026-08-14. This checkout is being run on a Mac mini with the
+browser dashboard, local Codex CLI, Godot headless checks, and Tailscale Serve.
+The upstream project began as a Windows-first solo tool, and some older docs and
+history still describe that path.
 
 **Works, and is exercised by the test suite and by daily use.** The MCP server
 and its tools. Seats, lanes, asset locks and the PreToolUse hook. The Godot
@@ -124,16 +126,15 @@ after the experiment recorded in its own `DESIGN.md` §16.5 came back negative
 against two other titles. It ships because the schemas are packaged data and the
 reasoning is worth reading, not because it is a direction.
 
-**Provenance to weigh.** Most of this was proven against a small number of games
-on one Windows machine. It has been through a harsh self-audit and the top-10
-blockers have since been worked,
-and its status header says which.
+**Provenance to weigh.** The macOS path is verified for the dashboard, Codex MCP
+connection, Codex dispatch smoke runs, and Godot headless execution. Playtest
+screen capture and the standalone Windows package are not part of the macOS
+baseline.
 
 ## Requirements
 
 - Python 3.11+
-- An MCP client. [Claude Code](https://claude.com/claude-code) is what it is
-  developed against
+- An MCP client. This checkout uses the local Codex CLI
 - [Godot 4.x](https://godotengine.org). Add the Web export templates if you want
   `bgate publish`
 - Optional: [Blender 4.2+](https://blender.org) for the 3D leg, `ffmpeg` and
@@ -143,9 +144,10 @@ and its status header says which.
   `KIE_API_KEY` for generated music, a `DEEPGRAM_API_KEY` for speech. All of
   them can be set from the dashboard rather than by editing a file
 
-**Windows is the supported platform.** Linux is best-effort: parts of the product
-shell out to Windows tooling, and the suite has not been kept green there. macOS
-is untested.
+**macOS is the verified platform for this checkout.** Use `bgate serve` in a
+browser, not `bgate app`, and set `BGATE_GODOT` if Godot is not discovered at
+`/Applications/Godot.app/Contents/MacOS/Godot`. Windows release packaging remains
+documented below, but it is not the path used by this Mac setup.
 
 Full detail, including the API key table and the platform notes:
 [`docs/setup.md`](docs/setup.md).
@@ -177,42 +179,41 @@ first-run screen that does the same thing from the browser.
 To let agents drive it:
 
 ```bash
-claude mcp add builders-gate --scope user -- <abs-python> -m bgate_mcp.server
-bgate hook-install <game-project>         # lane/lock teeth
+codex mcp add builders-gate -- <abs-python> -m bgate_mcp.server
 ```
 
-Use the ABSOLUTE python path. The claude CLI's health check resolves a bare
-`python` differently than your shell and reports "failed to connect" against a
-server that runs fine.
+Use the ABSOLUTE python path from the Builders Gate virtual environment. A bare
+`python` can resolve to a different interpreter when the CLI starts the MCP
+server, which makes a healthy server look disconnected.
 
 Other entry points, covered in [`docs/setup.md`](docs/setup.md):
 
 | Command | What it does |
 |---|---|
-| `bgate app` | The dashboard in a native window instead of a browser tab |
+| `bgate app` | Optional desktop wrapper; on macOS this checkout uses `bgate serve` instead |
 | `bgate adopt` | Point it at a Godot project you already have. Additive only, never rewrites a byte you wrote |
 | `bgate projects` | List every known project |
 | `bgate use <name>` | Switch the active project without exporting `BGATE_ROOT` |
 | `bgate publish` | Turn every game on the machine into a static arcade site |
-| `bgate hook-status` | Prove the enforcement hook is actually live |
 
-### Desktop app
+### macOS dashboard
 
-`bgate serve` runs a local web server and you open it in a browser. `bgate app`
-runs the same server and puts it in a native window instead — on Windows that
-is the Edge WebView2 runtime, which ships with Windows 11, so there is no
-browser bundled and nothing extra to install:
+`bgate serve` runs a local web server and you open it in a browser. This is the
+supported path for the macOS setup:
 
 ```bash
-pip install -e ".[desktop]"
-bgate app
+BGATE_ROOT=/path/to/game \
+BGATE_GODOT=/Applications/Godot.app/Contents/MacOS/Godot \
+BGATE_DISPATCH_RUNNER=codex \
+BGATE_ART_RUNNER=codex \
+BGATE_IMAGE_BACKEND=native \
+bgate serve --port 7788
 ```
 
-It binds to a loopback port the OS picks, so it will not collide with a
-`bgate serve` you already have open, and it shuts the server down when you
-close the window.
+For this Mac mini, launchd starts the same command at login and Tailscale Serve
+proxies it inside the tailnet.
 
-### The standalone Windows build, and why it warns
+### Windows-only standalone build
 
 There is a `BuildersGate-windows.zip` on the
 [releases page](https://github.com/Thepizzapie/BuildersGate/releases) for people
@@ -238,9 +239,7 @@ you downloaded is what CI built. Both are produced by the workflow in
 [`.github/workflows/release-exe.yml`](.github/workflows/release-exe.yml) from a
 tagged commit, and you can read the build log.
 
-**If you have Python, `pip install` avoids all of this** — `bgate app` is an
-ordinary Python process rather than an unsigned executable, and gives you the
-same native window. It is the recommended route.
+**On macOS, ignore the Windows zip.** Use Python plus `bgate serve`.
 
 To build the standalone yourself:
 
@@ -257,7 +256,7 @@ green PyInstaller run does not mean a working binary.
 
 ## The working loop
 
-Step 1 is `bgate init`. Everything after it is an MCP tool call, so any Claude
+Step 1 is `bgate init`. Everything after it is an MCP tool call, so any Codex
 session with the server registered can drive it. The intended shape: you or an
 orchestrator fan out one agent per seat, each adopting its role via `BGATE_SEAT`.
 
@@ -328,7 +327,8 @@ wait.
 There is a wheel smoke test in the suite, and the failure it exists to catch is invisible under `pip install -e .`: a wheel
 that shipped no JavaScript and no `templates/` produced a dashboard of 404s and a
 scaffolder that raised `FileNotFoundError`, and nothing had ever verified
-otherwise. Linux is `continue-on-error`.
+otherwise. CI still treats Linux as `continue-on-error`; macOS is verified here
+by the local dashboard, Codex MCP, and Godot headless smoke checks.
 
 ## Dev streams
 
