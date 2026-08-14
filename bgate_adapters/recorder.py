@@ -15,6 +15,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
+import re
 import threading
 import time
 import wave
@@ -83,7 +84,7 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
         import numpy as np
         import sounddevice as sd
     except Exception as exc:
-        return {"ok": False, "reason": f"audio deps unavailable: {exc}"}
+        return {"ok": False, "reason": f"오디오 의존성을 사용할 수 없습니다: {exc}"}
 
     # Try-order: the requested (or default) device first, then EVERY other input
     # device. A wireless headset — usually the system default — sleeps/powers off
@@ -107,7 +108,7 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
     except Exception:
         pass
     if not order:
-        return {"ok": False, "reason": "no input devices at all"}
+        return {"ok": False, "reason": "입력 오디오 장치가 없습니다."}
 
     info = None
     rec = None
@@ -126,7 +127,7 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
         break
     if rec is None or info is None:
         return {"ok": False, "device": order[0],
-                "reason": f"no input device would open (tried {len(order)}): {last_err}"}
+                "reason": f"열 수 있는 입력 장치가 없습니다. 시도 {len(order)}회: {last_err}"}
     fell_back = preferred is not None and device != preferred
 
     peak = float(np.max(np.abs(rec)))
@@ -135,15 +136,15 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
     out = {"ok": True, "device": device, "name": info["name"],
            "rms": rms, "peak": peak, "signal_detected": signal}
     if fell_back:
-        out["warning"] = (f"requested mic wouldn't open (asleep/disconnected) — "
-                          f"fell back to {info['name']}.")
+        out["warning"] = (f"요청한 마이크를 열 수 없어 "
+                          f"{info['name']} 장치로 대신 연결했습니다.")
     if not signal:
         # Present and openable, but quiet during the probe — likely a
         # noise-gated headset (nothing to hear until you talk) or a muted mic.
         # Pass with a warning rather than block; the transcript is the arbiter.
-        out["warning"] = (f"{info['name']} opened but was silent during the "
-                          "check — if it's a noise-gated headset that's normal; "
-                          "if the transcript comes back empty, it was muted.")
+        out["warning"] = (f"{info['name']} 장치는 열렸지만 검사 중 신호가 "
+                          "없었습니다. 노이즈 게이트가 있는 헤드셋이면 정상일 "
+                          "수 있고, 전사가 비어 나오면 음소거 상태입니다.")
     return out
 
 
@@ -252,6 +253,50 @@ def resolve_window(window_title: Optional[str] = None, *,
             "note": ("capturing the WHOLE DESKTOP — no window was named and none "
                      "matched the project name. Everything else on screen will "
                      "be in the recording.")}
+
+
+def probe_video_capture(window_title: Optional[str] = None, *,
+                        hints: Sequence[str] = ()) -> dict:
+    """Verify that this platform can actually capture video before recording."""
+    if sys.platform == "win32":
+        window = resolve_window(window_title, hints=hints)
+        return {
+            "ok": True,
+            "title": window["title"],
+            "whole_desktop": window["whole_desktop"],
+            "matches": window["matches"],
+            "reason": window["note"],
+        }
+    if sys.platform == "darwin":
+        ffmpeg = find_ffmpeg()
+        proc = subprocess.run(
+            [ffmpeg, "-hide_banner", "-f", "avfoundation",
+             "-list_devices", "true", "-i", ""],
+            capture_output=True, text=True, timeout=10,
+            stdin=subprocess.DEVNULL,
+        )
+        text = (proc.stderr or "") + "\n" + (proc.stdout or "")
+        video_section = text.split("AVFoundation video devices:", 1)[-1]
+        video_section = video_section.split("AVFoundation audio devices:", 1)[0]
+        has_video = bool(re.search(r"\[\d+\]\s+.+", video_section))
+        if has_video:
+            return {
+                "ok": False,
+                "reason": ("macOS 화면 장치는 보이지만 BuildersGate 0.1.x "
+                           "내장 녹화는 아직 Windows gdigrab 경로를 사용합니다. "
+                           "녹화 어댑터가 이식되기 전까지는 macOS 기본 화면 "
+                           "녹화나 QuickTime을 사용해야 합니다."),
+            }
+        return {
+            "ok": False,
+            "reason": ("현재 세션에서 ffmpeg avfoundation이 macOS 화면 녹화 "
+                       "장치를 볼 수 없습니다. 화면 녹화 권한을 확인하거나 "
+                       "QuickTime/macOS 기본 화면 녹화를 사용해야 합니다."),
+        }
+    return {
+        "ok": False,
+        "reason": f"{sys.platform}용 화면 녹화가 아직 구현되지 않았습니다.",
+    }
 
 
 # ---------------------------------------------------------------------------

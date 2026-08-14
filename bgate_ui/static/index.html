@@ -2362,16 +2362,16 @@ let ptReady = false, ptRecording = false;
  * truncated at 60 characters told nobody what to do, and the Record button sat
  * dead forever on a stock install. */
 const PT_FIXES = {
-  ffmpeg: 'install ffmpeg and put it on PATH, or point BGATE_FFMPEG at the binary',
-  ffprobe: 'ffprobe ships with ffmpeg - install ffmpeg and put it on PATH',
-  transcriber: 'install the speech extras:  pip install -e ".[stt,record]"',
-  whisper: 'install the speech extras:  pip install -e ".[stt]"',
-  mic: 'no usable input device - connect a microphone and enable it in the OS sound settings',
-  window: 'no game window to capture - boot the build first, then re-check; otherwise the whole desktop gets recorded',
-  native_game: 'no game/project.godot yet - scaffold the game (godot_scaffold), and set BGATE_GODOT if Godot is not on PATH',
-  godot: 'install Godot 4 and put it on PATH, or set BGATE_GODOT',
+  ffmpeg: 'ffmpeg를 설치하고 PATH에 넣거나 BGATE_FFMPEG로 실행 파일을 지정하세요',
+  ffprobe: 'ffprobe는 ffmpeg에 함께 포함됩니다. ffmpeg 설치와 PATH를 확인하세요',
+  transcriber: '음성 전사 의존성을 설치하세요: pip install -e ".[stt,record]"',
+  whisper: '음성 전사 의존성을 설치하세요: pip install -e ".[stt]"',
+  mic: '사용 가능한 입력 장치가 없습니다. 마이크 연결과 macOS 입력 권한을 확인하세요',
+  window: '이 macOS 세션에서 내장 화면 녹화를 사용할 수 없습니다. 화면 녹화 권한을 확인하세요',
+  native_game: 'project.godot을 찾지 못했습니다. Godot 프로젝트 위치와 BGATE_GODOT을 확인하세요',
+  godot: 'Godot 4를 설치하고 PATH에 넣거나 BGATE_GODOT을 지정하세요',
 };
-const ptFix = name => PT_FIXES[name] || "run  bgate doctor  for the full toolchain report";
+const ptFix = name => PT_FIXES[name] || "전체 도구 상태는 bgate doctor로 확인하세요";
 
 function togglePtWhy(){
   const why = document.getElementById("pt-why");
@@ -2390,12 +2390,12 @@ function renderPreflight(p){
   if (btn) btn.disabled = !ptReady && !ptRecording;
   if (!msg) return;
   if (ptReady){
-    msg.textContent = "playtest ready - record, play, talk";
+    msg.textContent = "플레이테스트 준비 완료 - 녹화하고 플레이하세요";
     if (why){ why.hidden = true; why.innerHTML = ""; }
     return;
   }
-  msg.innerHTML = `record unavailable · ${bad.length} check${bad.length === 1 ? "" : "s"} failing `
-    + `<button class="qbtn small ghost" onclick="togglePtWhy()">what do I install?</button>`;
+  msg.innerHTML = `녹화 사용 불가 · 실패한 검사 ${bad.length}개 `
+    + `<button class="qbtn small ghost" onclick="togglePtWhy()">무엇을 확인해야 하나요?</button>`;
   if (!why) return;
   /* No window list here. It printed the title of every window open on the
    * desktop — mail, chat, whatever — into a panel about installing ffmpeg. The
@@ -2404,7 +2404,7 @@ function renderPreflight(p){
       <li><b>${esc(name)}</b>
         <span class="r">${esc(c.reason || "unavailable")}</span>
         <span class="fix">→ ${esc(ptFix(name))}</span></li>`).join("")}</ul>`
-    + `<div class="pt-note">Full toolchain report from a terminal: <code>bgate doctor</code></div>`;
+    + `<div class="pt-note">터미널 전체 점검: <code>bgate doctor</code></div>`;
   why.hidden = false;
 }
 
@@ -2469,12 +2469,12 @@ async function toggleRecord(){
     const buildStatus = target === "web"
       ? await readJSON("/api/play/status", {}) : {stale:false};
     if (target === "web" && buildStatus.stale){
-      document.getElementById("pt-msg").textContent = "rebuilding current build before recording…";
+      document.getElementById("pt-msg").textContent = "녹화 전에 현재 빌드를 다시 만드는 중...";
       const rebuilt = await mutate("/api/play/rebuild", {quiet:true});
       if (!rebuilt.ok){
         document.getElementById("pt-msg").textContent =
-          "record blocked: current build failed - " + rebuilt.error;
-        toast("record blocked - the current build failed to export: " + rebuilt.error);
+          "녹화 차단됨: 현재 빌드 실패 - " + rebuilt.error;
+        toast("녹화 차단됨 - 현재 빌드 내보내기 실패: " + rebuilt.error);
         return;
       }
     }
@@ -2504,7 +2504,7 @@ async function toggleRecord(){
     const stopped = await mutate("/api/playtest/stop", {quiet:true});
     const got = stopped.ok ? (stopped.data || {}) : {};
     ptRecording = false;
-    btn.textContent = "● record";
+    btn.textContent = "● 녹화";
     btn.classList.remove("recording");
     const fine = stopped.ok && got.ok !== false;
     if (fine && document.getElementById("pt-target").value === "web") bootFrame();

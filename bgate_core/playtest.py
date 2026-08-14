@@ -213,12 +213,13 @@ def preflight(mic_device: Optional[int] = None, window_title: Optional[str] = No
         from bgate_adapters import godot
         try:
             executable = godot.find_godot()
-            project = Path(root or ".") / "game" / "project.godot"
+            project_dir = _godot_project_dir(root or ".")
+            project = project_dir / "project.godot"
             checks["native_game"] = {
                 "ok": project.is_file(),
                 "godot": executable,
                 "project": str(project),
-                "reason": "" if project.is_file() else "no game/project.godot",
+                "reason": "" if project.is_file() else "no project.godot",
             }
         except Exception as exc:
             checks["native_game"] = {"ok": False, "reason": str(exc)}
@@ -228,14 +229,7 @@ def preflight(mic_device: Optional[int] = None, window_title: Optional[str] = No
     # actually be captured now, while it can still be changed.
     hints = game_window_hints(root or ".")
     try:
-        window = recorder.resolve_window(window_title, hints=hints)
-        checks["window"] = {
-            "ok": True,
-            "title": window["title"],
-            "whole_desktop": window["whole_desktop"],
-            "matches": window["matches"],
-            "reason": window["note"],
-        }
+        checks["window"] = recorder.probe_video_capture(window_title, hints=hints)
     except Exception as exc:
         checks["window"] = {"ok": False, "reason": str(exc),
                             "matches": recorder.list_windows()}
@@ -246,6 +240,15 @@ def preflight(mic_device: Optional[int] = None, window_title: Optional[str] = No
     return out
 
 
+def _godot_project_dir(root: str | os.PathLike[str]) -> Path:
+    """The playable Godot project may live at root or at root/game."""
+    root_path = Path(root)
+    for candidate in (root_path, root_path / "game"):
+        if (candidate / "project.godot").is_file():
+            return candidate
+    return root_path / "game"
+
+
 def game_window_hints(root: str | os.PathLike[str]) -> list[str]:
     """Titles the game's window is likely to have, best first.
 
@@ -254,7 +257,7 @@ def game_window_hints(root: str | os.PathLike[str]) -> list[str]:
     user to read their title bar.
     """
     hints: list[str] = []
-    config = Path(root) / "game" / "project.godot"
+    config = _godot_project_dir(root) / "project.godot"
     try:
         for line in config.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.strip().startswith("config/name"):
@@ -458,12 +461,12 @@ def live_level(root: str | os.PathLike[str],
 def launch_native_game(root: str | os.PathLike[str], session_id: int,
                        telemetry_path: str, *, game_cmd: str = "") -> dict:
     """Launch the native Godot project with telemetry owned by this session."""
-    game_dir = Path(root) / "game"
+    game_dir = _godot_project_dir(root)
     if game_cmd:
         args = shlex.split(game_cmd, posix=os.name != "nt")
     else:
         if not (game_dir / "project.godot").is_file():
-            raise RuntimeError("no native Godot project at <root>/game")
+            raise RuntimeError("no native Godot project at project root or <root>/game")
         from bgate_adapters import godot
         executable = godot.find_godot()
         args = [executable, "--path", str(game_dir)]

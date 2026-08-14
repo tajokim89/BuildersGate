@@ -9,6 +9,8 @@ Run: bgate serve [--port 7788]   (from anywhere inside a project, or BGATE_ROOT)
 from __future__ import annotations
 
 import json
+import functools
+import inspect
 import os
 import re
 import subprocess
@@ -20,6 +22,7 @@ from urllib.parse import quote
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.routing import APIRoute
 from fastapi.responses import (
     FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse,
 )
@@ -925,13 +928,16 @@ async def queue_wait(ids: str, timeout_s: int = 60) -> dict:
     root = _root()
 
     def _statuses() -> dict:
-        out = {}
-        for item_id in want:
-            try:
-                out[item_id] = _queue.get(root, item_id)["status"]
-            except LookupError:
-                out[item_id] = "missing"
-        return out
+        try:
+            out = {}
+            for item_id in want:
+                try:
+                    out[item_id] = _queue.get(root, item_id)["status"]
+                except LookupError:
+                    out[item_id] = "missing"
+            return out
+        finally:
+            db.close_all()
 
     while True:
         statuses = await asyncio.to_thread(_statuses)
@@ -1761,6 +1767,48 @@ def play_files(file_path: str = "") -> FileResponse:
         raise _api.not_found(f"no file {file_path} in the web build",
                              path=file_path)
     return FileResponse(target)
+
+
+def _install_db_cleanup_wrappers() -> None:
+    """Close per-thread SQLite caches at the end of each request handler.
+
+    FastAPI runs sync endpoints in worker threads. A normal middleware finishes
+    on the event-loop thread, so it cannot close the worker thread's thread-local
+    DB cache. Wrapping the endpoint itself closes the cache in the same thread
+    that opened it.
+    """
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        endpoint = route.endpoint
+        if getattr(endpoint, "_bgate_closes_db", False):
+            continue
+        if inspect.iscoroutinefunction(endpoint):
+
+            @functools.wraps(endpoint)
+            async def async_endpoint(*args, __endpoint=endpoint, **kwargs):
+                try:
+                    return await __endpoint(*args, **kwargs)
+                finally:
+                    db.close_all()
+
+            wrapped = async_endpoint
+        else:
+
+            @functools.wraps(endpoint)
+            def sync_endpoint(*args, __endpoint=endpoint, **kwargs):
+                try:
+                    return __endpoint(*args, **kwargs)
+                finally:
+                    db.close_all()
+
+            wrapped = sync_endpoint
+        wrapped._bgate_closes_db = True
+        route.endpoint = wrapped
+        route.dependant.call = wrapped
+
+
+_install_db_cleanup_wrappers()
 
 
 def _serving_elsewhere(port: int, root) -> str:
