@@ -1936,9 +1936,9 @@
     if (status.available) {
       mic.disabled = false;
       tts.disabled = false;
-      mic.title = "Talk to the " + this.seat + " - Deepgram " +
-        (status.listen_model || "") + ", ~$" +
-        ((status.usd_per_minute || 0)).toFixed(4) + "/min while the mic is live";
+      mic.title = "이 좌석과 음성으로 대화 - Deepgram " +
+        (status.listen_model || "") + ", 마이크가 켜진 동안 분당 약 $" +
+        ((status.usd_per_minute || 0)).toFixed(4);
       why.textContent = "";
       return;
     }
@@ -1946,11 +1946,11 @@
     // truncates on a narrow pane and the sentence is the actionable part.
     mic.disabled = true;
     tts.disabled = true;
-    mic.title = tts.title = status.reason || "voice is not configured";
+    mic.title = tts.title = status.reason || "음성이 설정되지 않았습니다";
     why.textContent = status.key === false
-      ? "voice off · no Deepgram key"
-      : "voice off · " + (status.websockets === false
-          ? "websockets extra not installed" : "unavailable");
+      ? "음성 꺼짐 · Deepgram 키 없음"
+      : "음성 꺼짐 · " + (status.websockets === false
+          ? "websockets 추가 기능 없음" : "사용할 수 없음");
     why.title = status.reason || "";
   };
 
@@ -1959,7 +1959,7 @@
     var b = this.$('[data-a="tts"]');
     b.classList.toggle("on", this.tts);
     b.innerHTML = icon(this.tts ? "audio" : "mute", 13) +
-      "<span>" + (this.tts ? "Speaking" : "Silent") + "</span>";
+      "<span>" + (this.tts ? "읽는 중" : "음소거") + "</span>";
     if (!this.tts) Voice.stopSpeaking();
   };
 
@@ -1971,7 +1971,7 @@
   Workspace.prototype.startMic = async function () {
     var self = this;
     if (!this.session || this.session.status === "archived") {
-      toast("open a session before talking to it", true);
+      toast("대화할 세션을 먼저 여십시오", true);
       return;
     }
     var bar = this.$('[data-a="voicebar"]');
