@@ -102,7 +102,7 @@
 
        Credentials      is there a key for a hosted provider
        Local generators can this machine make art right now
-       Agent CLIs       is Claude Code installed, and can it see our tools
+       Agent CLIs       is the Codex CLI installed, and can it see our tools
 
      The last two shipped joined by an "and" — which was the tell, because they
      had arrived in one task rather than because they belong together. A ComfyUI

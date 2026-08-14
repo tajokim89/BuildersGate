@@ -1,14 +1,8 @@
-"""Is each coding-agent CLI installed, and is Builders Gate actually wired into it.
+"""Is Codex installed, and is Builders Gate actually wired into it.
 
-THE PAPERCUT THIS EXISTS FOR IS NAMED IN CLAUDE.md, and it is the worst one in
-the product's setup story:
-
-    claude mcp add builders-gate --scope user -- <ABSOLUTE-python-path> -m bgate_mcp.server
-
-    **Use the absolute path to the interpreter.** The claude CLI resolves a bare
-    `python` differently than the shell does and reports "failed to connect" for
-    a server that runs fine. On Windows this is the single most common failure,
-    and the error message points nowhere near the cause.
+The setup check exists because a registration pointing at the wrong Python
+interpreter looks exactly like a working one until the first MCP tool call
+fails. Use the absolute interpreter path from the BuildersGate virtualenv.
 
 A registration pointing at the wrong interpreter looks EXACTLY like a working
 one until a tool call fails, and the failure names the connection rather than
@@ -22,22 +16,20 @@ WHAT IT DOES NOT DO.
   * IT DOES NOT LAUNCH ANYBODY'S CLI. Detection, wiring status, and a config
     write. Spawning an interactive session is the brainstorm room's machinery
     and there must not be a second one.
-  * IT DOES NOT HAND-EDIT THEIR CONFIG. ``~/.claude.json`` and
-    ``~/.codex/config.toml`` are files the user also edits, in formats their
-    owners are free to change. Registration goes through the CLI's OWN
-    ``mcp add`` subcommand — argv list, no shell — so the tool that owns the
+  * IT DOES NOT HAND-EDIT THE CONFIG. ``~/.codex/config.toml`` is a file the
+    user also edits, in a format Codex owns. Registration goes through the CLI's
+    OWN ``mcp add`` subcommand — argv list, no shell — so the tool that owns the
     format writes the format. Reading is done directly, because reading cannot
     corrupt anything and shelling out per repaint would not be free.
   * IT DOES NOT DUPLICATE :mod:`bgate_ui.runners`. That module is the registry —
     which CLIs exist, how to find them, what each one can do — and
     ``runners.available()`` is the installed/path detection. This adds only the
-    half runners has no opinion about: how each CLI persistently registers an
+    half runners has no opinion about: how Codex persistently registers an
     MCP server for the user's OWN interactive sessions, which is a different
     thing from ``runners.mcp_overrides()`` (that is per-invocation, in memory,
     for a dispatched agent, and deliberately leaves nothing behind).
 
-A THIRD CLI IS ONE ENTRY in :data:`WIRINGS` — provided ``runners.RUNNERS`` has
-it, since that is where "does this CLI exist" is answered.
+Additional CLIs are deliberately not exposed in this Codex-only build.
 """
 from __future__ import annotations
 
@@ -91,76 +83,6 @@ class Wiring:
         repr=False, default=lambda exe, py: [])
     how: str = ""
     scope_note: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Claude Code — ~/.claude.json, "mcpServers" at user scope
-# ---------------------------------------------------------------------------
-
-def _claude_config() -> Path:
-    return Path.home() / ".claude.json"
-
-
-def _claude_read() -> dict:
-    """The builders-gate entry, at whichever scope it is registered.
-
-    USER SCOPE IS CHECKED FIRST AND IS THE ONE THIS PANEL OFFERS, because it
-    covers every game project on the machine including ones that do not exist
-    yet — the same argument ``bgate hook-install --scope user`` makes. A
-    project-scoped entry is reported when found so a user who set one up by hand
-    is not told they have nothing.
-    """
-    path = _claude_config()
-    out: dict[str, Any] = {"found": False, "path": str(path), "scope": "",
-                           "command": "", "args": [], "error": ""}
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        out["error"] = "no ~/.claude.json yet — the CLI writes it on first run"
-        return out
-    try:
-        doc = json.loads(raw)
-    except ValueError:
-        out["error"] = f"{path} is not valid JSON; refusing to guess at it"
-        return out
-    if not isinstance(doc, dict):
-        out["error"] = f"{path} is not an object"
-        return out
-
-    entry = ((doc.get("mcpServers") or {}) if isinstance(
-        doc.get("mcpServers"), dict) else {}).get(SERVER)
-    scope = "user"
-    if not isinstance(entry, dict):
-        entry, scope = None, ""
-        projects = doc.get("projects")
-        if isinstance(projects, dict):
-            for name, blob in projects.items():
-                if not isinstance(blob, dict):
-                    continue
-                candidate = (blob.get("mcpServers") or {})
-                if isinstance(candidate, dict) and isinstance(
-                        candidate.get(SERVER), dict):
-                    entry, scope = candidate[SERVER], f"local ({name})"
-                    break
-    if not isinstance(entry, dict):
-        return out
-    args = entry.get("args")
-    out.update(found=True, scope=scope,
-               command=str(entry.get("command") or ""),
-               args=[str(a) for a in args] if isinstance(args, list) else [])
-    return out
-
-
-def _claude_argv(exe: str, interpreter: str) -> list[str]:
-    # `mcp add` refuses a name it already holds, so the existing one is removed
-    # first — this is a re-register as much as a register, and the broken state
-    # it fixes is one where an entry is already there.
-    return [exe, "mcp", "add", SERVER, "--scope", "user", "--",
-            interpreter, *MODULE_ARGS]
-
-
-def _claude_unregister(exe: str) -> list[str]:
-    return [exe, "mcp", "remove", SERVER, "--scope", "user"]
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +245,7 @@ def _judge(entry: dict) -> dict:
 def command_line(runner_id: str) -> str:
     """The command a human would type, for the copy button and for the docs.
 
-    Shown even when the button is available: this is the line in CLAUDE.md and
+    Shown even when the button is available: this is the line in AGENTS.md and
     in every support answer, and a user who wants to know what a button did is
     owed the ability to read it.
     """

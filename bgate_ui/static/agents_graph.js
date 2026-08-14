@@ -169,7 +169,7 @@
       `<button class="cg-fchip" type="button" data-peek="${esc(rel)}"${run}
                title="${esc(rel)}">${esc(rel.split("/").pop())}</button>`).join("");
     return `<div class="cg-step k-${k}${s.analysis ? " analysis" : ""}">`
-      + (s.analysis ? `<span class="cg-tag">what it sees</span>` : "")
+      + (s.analysis ? `<span class="cg-tag">확인한 내용</span>` : "")
       + txt
       + (files ? `<div class="cg-fchips">${files}</div>` : "")
       + (shots ? `<div class="cg-shots">${shots}</div>` : "")
@@ -207,6 +207,7 @@
     filter: "active",
     _sig: "",
     _saveT: null,
+    _flushBound: false,
     _fitted: false,
     _detail: null,
     _down: null,
@@ -232,6 +233,7 @@
         this.renderDetail();
       }, true);
       this.loadPositions();
+      this.bindWorkspaceFlush();
       return this;
     },
 
@@ -597,8 +599,8 @@
           // waiting on a person, so it keeps its own colour and gets the dashed
           // outline that means "stopped here".
           status: "",
-          badge: g.kind === "art" ? "approval"
-            : g.kind === "escalation" ? "escalated" : "qa gate",
+          badge: g.kind === "art" ? "승인 대기"
+            : g.kind === "escalation" ? "사용자 판정" : "검수 게이트",
           ports: { in: IN },
         });
         if (anchor) edges.push({ from: ["task_" + over, "o"], to: [id, "i"] });
@@ -1130,8 +1132,35 @@
     async saveWorkspace() {
       const data = this.workspaceData();
       this._wsData = data;
-      try { await window.mutate(WS_PATH, { body: { data }, quiet: true }); }
-      catch (e) {}
+      try {
+        const r = await window.mutate(WS_PATH, { body: { data }, quiet: true });
+        return !!(r && r.ok !== false);
+      } catch (e) { return false; }
+    },
+
+    flushWorkspace() {
+      const data = this.workspaceData();
+      this._wsData = data;
+      clearTimeout(this._saveT);
+      this._saveT = null;
+      try {
+        fetch(WS_PATH, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data }),
+          keepalive: true,
+        });
+      } catch (e) {}
+    },
+
+    bindWorkspaceFlush() {
+      if (this._flushBound) return;
+      this._flushBound = true;
+      const flush = () => this.flushWorkspace();
+      window.addEventListener("pagehide", flush);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") flush();
+      });
     },
 
     onMove(n) {
@@ -1151,7 +1180,10 @@
       this._sig = "";
       this.renderDetail();
       this.updateRestoreButton();
-      this.scheduleSave(120);
+      this.flushWorkspace();
+      this.saveWorkspace().then(ok => {
+        if (!ok && window.toast) toast("노드 숨김 저장에 실패했습니다. 다시 시도하세요.", true);
+      });
       if (window.toast) toast("노드를 숨겼습니다. 새로고침해도 유지됩니다.", "ok");
     },
 

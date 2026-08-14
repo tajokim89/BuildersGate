@@ -290,6 +290,7 @@ def _verification_snapshot(root: Path) -> dict:
             try:
                 _asset_verification(root, force=True)
             finally:
+                db.close_all()
                 _verify_refreshing.discard(key)
 
         threading.Thread(target=_refresh, name="asset-verify",

@@ -1,4 +1,4 @@
-"""Dispatch — the dashboard spawns real Claude seat sessions against work items.
+"""Dispatch — the dashboard spawns real Codex seat sessions against work items.
 
 Why this architecture wins: a session spawned with cwd = the game project gets
 (1) the builders-gate MCP tools NATIVELY (the server resolves the project by
@@ -140,23 +140,9 @@ def _flag(root, key: str, env_name: str) -> bool:
             "1", "true", "yes", "on"}
 
 
-def find_claude() -> Optional[str]:
-    """Kept as the module's own name because callers and tests import it from
-    here; the lookup itself moved to runners.py, where the second CLI lives."""
-    return _runners.find_claude()
-
-
 def _executable(runner: "_runners.Runner") -> Optional[str]:
-    """Where this runner's CLI is.
-
-    The claude lookup deliberately still goes through THIS module's
-    ``find_claude``. It has been dispatch's public seam since there was one
-    runner — the lifecycle tests stand a fake CLI up by patching it, and so does
-    anything else that ever needed to. Moving the resolution wholesale into the
-    table would have silently stopped honouring that, which is a worse trade
-    than one branch with a reason on it.
-    """
-    return find_claude() if runner.name == "claude" else runner.find()
+    """Where this runner's CLI is."""
+    return runner.find()
 
 
 def _runner_for(root: str, seat: str) -> "_runners.Runner":
@@ -238,11 +224,9 @@ def _model_for_runner(root: str, seat: str, runner: "_runners.Runner",
                       chosen: Optional[str]) -> Optional[str]:
     """The model name must belong to the CLI that will receive it.
 
-    The dispatch registry default is a Claude tier name. When a local machine
-    opts non-art seats into Codex to avoid an expired Claude OAuth session, the
-    same setting would otherwise send ``--model sonnet`` to Codex and fail for
-    the wrong reason. Keep the explicit CLI boundary here instead of teaching
-    every caller which model vocabulary each runner accepts.
+    Stored settings may contain old non-Codex tier names. Keep the explicit CLI
+    boundary here instead of sending those names to Codex and failing for the
+    wrong reason.
     """
     if runner.name != "codex":
         model = (chosen or _model_for(root, seat) or "").strip()
@@ -251,7 +235,7 @@ def _model_for_runner(root: str, seat: str, runner: "_runners.Runner",
     if not model:
         return _codex_model_for_seat(seat)
     lowered = model.lower()
-    if lowered in ("sonnet", "opus", "haiku") or lowered.startswith("claude"):
+    if lowered in ("sonnet", "opus", "haiku"):
         return _codex_model_for_seat(seat)
     return model
 
@@ -648,7 +632,7 @@ def dispatch(root: str, item_id: int, **kwargs) -> dict:
     Everything _spawn does between its `_live` check and the actual Popen — the
     scope check, the budget check, git dirty-state, cutting a worktree — takes
     seconds, and the lock is not held across it. Two callers racing through that
-    window both saw `_live` empty and both spawned a claude tree; the second
+    window both saw `_live` empty and both spawned an agent process; the second
     entry overwrote the first in `_live`, so the first process was never reaped,
     never budget-checked and never killed. It billed until somebody found it in
     Task Manager, and it also let the concurrency cap be exceeded.
@@ -677,7 +661,7 @@ def _spawn(root: str, item_id: int, *, permission_mode: str = "acceptEdits",
            max_cost_usd: Optional[float] = None,
            allow_dirty: Optional[bool] = None,
            actor: str = "") -> dict:
-    """Spawn a Claude session against a queued item. One per item.
+    """Spawn a Codex session against a queued item. One per item.
 
     Four things must be true before a process exists: the CLI is there, the item
     is dispatchable, the fleet is under its concurrency cap, and the projected
@@ -724,7 +708,7 @@ def _spawn(root: str, item_id: int, *, permission_mode: str = "acceptEdits",
         if item_id in _live and _live[item_id]["proc"].poll() is None:
             return {"ok": False, "error": f"item {item_id} already has a live agent"}
         # Server-side, because the dashboard's "dispatch all" loops every queued
-        # item with no cap of its own — 20 agents is 20 claude trees, each with
+        # item with no cap of its own — 20 agents is 20 agent processs, each with
         # its own MCP children, on one laptop.
         cap = int(_spend.budget(root).get("max_concurrent") or 0)
         running = _live_count()
@@ -950,7 +934,7 @@ _ERROR_SUBTYPES = ("error", "error_during_execution", "error_max_turns",
 def _final_is_error(final: dict) -> bool:
     """Whether a terminal CLI event is a failed run, regardless of subtype.
 
-    Claude can emit ``subtype:"success"`` while also setting ``is_error:true``
+    The legacy event stream could emit ``subtype:"success"`` while also setting ``is_error:true``
     and carrying a 401 auth error in the assistant text. The subtype describes
     the CLI process finishing, not the work succeeding.
     """
@@ -1057,7 +1041,7 @@ def _watch_completion(root: str, item_id: int, poll_s: float = 2.0,
     """Close the agent's stdin once it has queue_complete'd, so the waiting
     process reaches EOF and exits — then make SURE it exits. EOF alone proved
     unreliable (agents wedged on child MCP servers piled up 14 orphaned
-    claude.exe at peak), so after a grace period the process tree is killed;
+    Codex process at peak), so after a grace period the process tree is killed;
     the item is already done, nothing of value is lost.
 
     This is also the wall clock. The kill grace above only starts once the item
@@ -1304,7 +1288,7 @@ def _touched_paths(root: str, entry: dict) -> list[str]:
 def _exit_verdict(root: str, item_id: int, code, entry: dict) -> tuple[str, str]:
     """What a dead process means for its item.
 
-    EXIT 0 IS NOT SUCCESS. A `claude` that dies on startup, gets killed by the
+    EXIT 0 IS NOT SUCCESS. A the CLI that dies on startup, gets killed by the
     OS, or does nothing at all can still exit 0 — and marking that 'done'
     silently books work nobody did, on an item nobody will ever look at again.
     The evidence that a run happened is the CLI's own terminal ``result`` event:
@@ -1529,7 +1513,7 @@ def _record_pid(root: str, pid: int, item_id: int) -> None:
 
     The identity fields matter as much as the pid: a pid is reused within
     minutes on Windows, and the sweep's job is to kill OUR agent, never the
-    claude session the user started themselves. See :func:`_is_recorded_agent`.
+    session the user started themselves. See :func:`_is_recorded_agent`.
     """
     try:
         path = _pids_path(root)
@@ -1590,8 +1574,8 @@ def _proc_identity(pid: int) -> dict:
 def _is_recorded_agent(pid: int, meta: dict) -> bool:
     """Is this pid still the process we spawned, or a stranger wearing its number?
 
-    Killing anything whose image name starts with 'claude' is how you kill the
-    user's OWN claude session: pids are recycled, and this ledger is best-effort
+    Killing anything with a matching CLI name based only on pid is how you kill
+    the user's own session: pids are recycled, and this ledger is best-effort
     (a crash can leave entries for processes that died hours ago). The process
     START TIME is the part a recycled pid cannot fake, so when the ledger
     recorded one it is the check that decides. Entries without it — written by
@@ -1600,7 +1584,7 @@ def _is_recorded_agent(pid: int, meta: dict) -> bool:
     """
     live = _proc_identity(int(pid))
     name = str(live.get("name") or "")
-    if not name.startswith("claude"):
+    if not name.startswith("codex"):
         return False
     recorded = meta.get("started")
     if recorded and live.get("started") is not None:
@@ -1707,7 +1691,7 @@ def kill_all(root: str, *, reason: str = "", actor: str = "") -> dict:
 def reap_orphans(root: str) -> dict:
     """Sweep agents orphaned by a previous server run.
 
-    _live dies with the server process, but the spawned claude.exe trees do
+    _live dies with the server process, but the spawned Codex process tree does
     not — they sit waiting on a pipe nobody will ever close. The pids ledger
     survives restarts; anything in it that is not in the CURRENT _live and is
     still verifiably OUR agent process gets its tree killed. The items those
@@ -1892,7 +1876,7 @@ def status(root: str) -> list[dict]:
                     # cannot bite and a steer box that goes nowhere must be
                     # visible as facts about the run, not discovered by trying
                     # them — that is the whole price of allowing a second runner.
-                    "runner": entry.get("runner", "claude"),
+                    "runner": entry.get("runner", "codex"),
                     "cost_tracked": bool(entry.get("cost_tracked", True)),
                     "steerable": bool(entry.get("steerable", True)),
                     "native_images": bool(entry.get("native_images")),
@@ -2057,14 +2041,14 @@ def _final_model(ev: dict) -> str:
 # ---------------------------------------------------------------------------
 # The other vocabulary
 # ---------------------------------------------------------------------------
-# `codex exec --json` speaks a different, smaller event language than claude's
+# `codex exec --json` speaks a compact event language with a smaller surface:
 # stream-json. The two do not collide — dotted names against bare ones — so one
 # reader handles a log of either kind without being told which runner wrote it,
 # which matters because the log is per ITEM and a re-dispatch may switch runners
 # under an existing file.
 #
 # The mapping is deliberately lossy in one direction: codex reports a shell
-# command and its whole aggregated output, where claude reports a tool name and
+# command and its whole aggregated output; some event streams report a tool name and
 # a structured result. Both land as the same {kind: tool} / {kind: result} steps
 # the feed already renders, because the person reading the panel wants to know
 # what the agent DID, not which vendor's noun it used.
@@ -2228,7 +2212,7 @@ def _prune_feeds() -> None:
 def stop(item_id: int, actor: str = "") -> dict:
     """End a run deliberately: kill the TREE, and record it as a stop.
 
-    Two bugs in one line. terminate() killed the `claude` parent only, leaving
+    Two bugs in one line. terminate() killed the the CLI parent only, leaving
     its MCP-server children alive holding the pipe — the orphan pile-up the rest
     of this file keeps fighting. And the run was then banked as 'session exited
     N without self-reporting', so the one place a user looks to find out what

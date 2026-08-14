@@ -1,29 +1,19 @@
 """Which CLI a dispatched agent actually runs on.
 
-Dispatch was one CLI hardcoded in one function: `claude`, with claude's flags,
-emitting claude's stream-json, parsed by a reader that knew those event names.
-That was correct while there was one runner and became the obstacle the moment
-there were two.
-
-WHY A SECOND RUNNER AT ALL, given the first one works: the Codex CLI generates
-images natively. Every other seat wants the engine, the parser and the ledger
-this tool already has; the art seat is the one place where the runner's OWN
-capability is the point. So this is deliberately not "pluggable agents" — it is
-one seat, one alternative, and a table that says exactly how the two differ.
+This installation is Codex-only. The runner table is still explicit because the
+dashboard, settings panel and preflight checks need one place to answer how the
+CLI is found, how prompts are passed, and which capabilities are available.
 
 WHAT A RUNNER MUST DECLARE, because dispatch's behaviour depends on all four
 and guessing any of them produces a silent failure rather than an error:
 
-    steerable      claude keeps stdin open as a live channel, so agent_steer can
-                   inject a user turn mid-run. `codex exec` reads stdin ONCE, as
-                   an appended block, and closes it. A steer sent to a Codex
-                   agent goes nowhere, so the caller has to be told rather than
-                   left watching a message that will never land.
+    steerable      `codex exec` reads stdin ONCE, as an appended block, and
+                   closes it. A steer sent to a Codex agent goes nowhere, so the
+                   caller has to be told rather than left watching a message
+                   that will never land.
 
-    cost_tracked   claude reports total_cost_usd per turn, which is what the
-                   per-item ceiling at _observed_cost kills a runaway on. Codex
-                   reports TOKENS and no price. A price table would be a number
-                   in this repo going stale against OpenAI's, silently
+    cost_tracked   Codex reports TOKENS and no price. A price table would be a
+                   number in this repo going stale against OpenAI's, silently
                    under-reporting until somebody notices the bill — so there
                    is none, the ceiling is declared not to apply, and the run
                    says so everywhere it is shown. An untracked cost that
@@ -34,10 +24,8 @@ and guessing any of them produces a silent failure rather than an error:
                    "stdin_once" writes the prompt and closes, which is the only
                    thing `codex exec` will act on.
 
-    events         the log parser needs to know which vocabulary it is reading.
-                   The two do not collide (`assistant`/`user`/`result` versus
-                   `thread.started`/`item.completed`/`turn.completed`), so one
-                   reader handles a log of either kind without being told which.
+    events         the log parser reads Codex JSON events such as
+                   `thread.started`, `item.completed` and `turn.completed`.
 
 THE SANDBOX IS NOT BYPASSED. Codex runs under `--sandbox workspace-write` with
 `--cd` at the project, which was verified to write to the real directory rather
@@ -72,15 +60,6 @@ def _npm_shim(name: str) -> Optional[str]:
         return None
     shim = Path(os.environ.get("APPDATA", "")) / "npm" / f"{name}.cmd"
     return str(shim) if shim.is_file() else None
-
-
-def find_claude() -> Optional[str]:
-    exe = shutil.which("claude")
-    if exe:
-        return exe
-    fallback = Path.home() / ".local" / "bin" / (
-        "claude.exe" if sys.platform == "win32" else "claude")
-    return str(fallback) if fallback.exists() else None
 
 
 def find_codex() -> Optional[str]:
@@ -119,7 +98,7 @@ class Chat:
     """How a runner holds a THINKING conversation that cannot touch the repo.
 
     A second shape for the same CLI, and it exists because the brainstorm room
-    needed a real Claude Code session and the room's whole promise is that
+    needed a real CLI session and the room's whole promise is that
     nothing is written until a human presses Deploy. A dispatched agent is the
     opposite of that by design, so the two cannot share ``build_args``.
 
@@ -158,37 +137,6 @@ class Runner:
     chat: Optional[Chat] = None
 
 
-def _claude_args(exe: str, *, permission_mode: str, model: Optional[str],
-                 cwd: str, native_images: bool, max_turns: int = 0) -> list[str]:
-    """Unchanged from the single-runner era, on purpose.
-
-    stream-json OUTPUT makes claude emit one NDJSON event per step AS IT WORKS
-    instead of buffering to the end, which is what feeds the live activity view.
-    stream-json INPUT keeps stdin open as a channel so steer() can inject user
-    turns while the agent runs. --replay-user-messages echoes those back into
-    the log so they appear in the feed.
-
-    `native_images` is ignored here and that is not an oversight: Claude Code
-    has no image generation of its own, so there is nothing to switch off. The
-    parameter stays in the signature so the two runners share one call site —
-    a caller that had to know which runner accepts which argument would be the
-    hardcoding this module exists to remove.
-
-    --max-turns is a SECOND ceiling, not a duplicate of the cost one. The cost
-    ceiling reads total_cost_usd, which the CLI only prints at a result
-    boundary; an agent grinding through a tool loop offers no such boundary and
-    runs past its dollars unobserved. Turns are counted by the CLI and end the
-    session on their own. 0 means the caller wants none.
-    """
-    return [exe, "-p", "--permission-mode", permission_mode,
-            "--input-format", "stream-json", "--output-format", "stream-json",
-            "--verbose", "--replay-user-messages",
-            "--allowedTools", f"mcp__{MCP_SERVER_NAME}", "Read", "Edit", "Write",
-            "Glob", "Grep", "Bash"] \
-        + (["--model", model] if model else []) \
-        + (["--max-turns", str(max_turns)] if max_turns else [])
-
-
 def _codex_args(exe: str, *, permission_mode: str, model: Optional[str],
                 cwd: str, native_images: bool, max_turns: int = 0) -> list[str]:
     """`codex exec`, JSONL, sandboxed to the project directory.
@@ -222,150 +170,6 @@ def _codex_args(exe: str, *, permission_mode: str, model: Optional[str],
     return args
 
 
-# THE FLAGS THAT MAKE A BRAINSTORM SESSION UNABLE TO WRITE.
-#
-# Named as a constant, and read by both the argv builder and the sentence shown
-# to the human, so the two cannot drift into a promise the process is not
-# keeping. Every one of these was checked against `claude --version 2.1.226` by
-# reading the session's own `system/init` event, which reports the tool list and
-# the MCP servers the CLI actually constructed — the model's own account of what
-# tools it has is a hallucination and was observed to be one (it recited the
-# standard list at a session whose init said `"tools":[]`).
-#
-#   --tools ""              THE guarantee. Not a permission preference: the
-#                           built-in tool set is EMPTY, so there is no Write, no
-#                           Edit, no Bash and no Read to grant. init reported
-#                           "tools":[] and a session asked to write a file
-#                           produced no file.
-#   --strict-mcp-config     ONLY the servers named by --mcp-config, whatever is
-#                           registered on the machine. This is the flag that
-#                           matters most on a developer machine: builders-gate
-#                           is registered at USER scope, so a plain `claude`
-#                           spawned in a game project would inherit queue_add,
-#                           bible_add and image_generate. With no --mcp-config
-#                           init reported "mcp_servers":[]; with the pad
-#                           document it reported exactly ["pads"] and a tool
-#                           list of exactly the two pad tools.
-#   --setting-sources ""    user/project/local settings cannot add tools,
-#                           permissions, hooks or MCP servers back.
-#   --disable-slash-commands
-#                           a brainstorm message is arbitrary human text, and a
-#                           message that happens to start with "/" must not be
-#                           able to run a skill. init reported
-#                           "slash_commands":[] and "skills":[] with this on,
-#                           and both were POPULATED without it.
-#   --allowedTools <the two pad tools, by full name>
-#                           the belt, and it is NAMED rather than broad. With
-#                           the built-in set empty and one two-tool server
-#                           registered, this list and the actual tool list are
-#                           the same two strings — so a server that ever got in
-#                           by another route contributes nothing that is
-#                           approved. Written as full names, not the
-#                           `mcp__pads` prefix a dispatched agent uses, because
-#                           a prefix approves whatever that server grows.
-#
-# WHAT IS DELIBERATELY *NOT* HERE ANY MORE, and both removals were forced by
-# measurement rather than preference:
-#
-#   --permission-mode plan  it was the belt, and it turned out to refuse THE PAD
-#                           TOOLS TOO. Observed: a session holding exactly
-#                           mcp__pads__pad_read answered "I'm currently in plan
-#                           mode, which blocks me from calling tools other than
-#                           writing to the plan file — including the read-only
-#                           pad_read call you asked for". Keeping it would have
-#                           shipped a two-tool server that could never be
-#                           called, which is worse than either alternative:
-#                           a feature that silently does nothing reads as the
-#                           model being unhelpful. The guarantee never rested on
-#                           plan mode anyway — it rests on the tool set being
-#                           empty and the MCP config being exhaustive, both of
-#                           which are unchanged and both of which were read back
-#                           off the CLI's own init event.
-#   --no-session-persistence
-#                           it was here on the reasoning that the transcript
-#                           already lives in the project's DB and a second copy
-#                           of somebody's private thinking under ~/.claude is a
-#                           copy nobody asked for. That lost to a direct request
-#                           — "proper cli emulation for seamless resumes" —
-#                           because the flag and --resume are one switch read
-#                           two ways: a session that was never persisted cannot
-#                           be resumed, and re-seeding a transcript into a fresh
-#                           process is a replay, not a continuation. The trade
-#                           is stated rather than hidden.
-#
-# WHAT THE ROOM'S PROMISE NOW RESTS ON, in one sentence, because two flags left
-# and one arrived and it should be possible to check without reading all of the
-# above: the process holds exactly two tools, both of which write to one row of
-# one table in this project's own database, and neither of which can file work,
-# run a command or touch a file.
-
-# The two tools the pad server exposes, by their full CLI-side names. Imported
-# from nowhere on purpose: bgate_mcp.padserver pulls in the MCP SDK, and this
-# module is loaded by every dispatch on a machine that may not have it. The
-# names are asserted equal to padserver.TOOL_NAMES in the tests, which is where
-# a drift between the two belongs.
-PAD_TOOLS = ("mcp__pads__pad_read", "mcp__pads__pad_draw")
-
-_CLAUDE_READONLY = ["--tools", "", "--strict-mcp-config",
-                    "--setting-sources", "", "--disable-slash-commands",
-                    "--permission-mode", "acceptEdits"]
-
-CLAUDE_READONLY_BY = (
-    'claude --tools "" (the built-in tool set is empty — no Write, no Bash, no '
-    "Read), --strict-mcp-config with --mcp-config naming a two-tool pad server "
-    "and nothing else (so no builders-gate and no queue_add), --allowedTools "
-    'listing exactly those two tools by name, and --setting-sources "" so no '
-    "settings file can add any of it back. Checked against the session's own "
-    "init event, which is the only account of its tools that is not the model's")
-
-
-def _claude_chat_args(exe: str, *, system: str, model: Optional[str],
-                      max_usd: float = 0.0, mcp_config: str = "",
-                      resume: str = "", cwd: str = "") -> list[str]:
-    """A Claude Code session that can THINK and cannot TOUCH THE PROJECT.
-
-    Same CLI and the same stream-json channel as a dispatched agent — one
-    process, stdin held open, one `result` event per turn — with the entire
-    capability surface removed rather than merely unused, and then exactly two
-    tools handed back. See _CLAUDE_READONLY for what each flag is doing and
-    what was observed without it.
-
-    --system-prompt REPLACES the default rather than appending to it. The
-    default one describes a coding agent with a working directory and a task,
-    which is exactly the wrong frame for the cheap room and is also the bulk of
-    the per-turn cache write: the same trivial turn measured 9,860 cache-creation
-    tokens with the stock prompt and 3,076 with this one.
-
-    ``mcp_config`` IS THE ONLY WAY A TOOL GETS IN, and it is a JSON document
-    rather than a server name — see bgate_mcp.padserver.config, which builds it.
-    Paired with --strict-mcp-config it is an exhaustive statement: these servers
-    and no others, whatever is registered on the machine. The pad server is two
-    tools over one brainstorm session; passing "" here is a session with no
-    tools at all, which is what a synthesis gets.
-
-    ``resume`` continues a real CLI session by id instead of starting one. It is
-    what makes reopening a brainstorm a CONTINUATION rather than a replay. It is
-    also the flag most likely to fail for reasons outside this process — a
-    pruned session store, a moved machine, a version bump — so the caller must
-    treat a resumed spawn as provisional and fall back to a fresh one; see
-    brainsession._collect, which detects it, and ask(), which retries once.
-
-    --max-budget-usd is the CLI's OWN ceiling and is the only one that can bite
-    between result boundaries. The dashboard tracks cumulative session spend as
-    well, but that number dies with the process and this one does not.
-    """
-    return [exe, "-p",
-            "--input-format", "stream-json", "--output-format", "stream-json",
-            "--verbose", "--replay-user-messages",
-            *_CLAUDE_READONLY] \
-        + (["--mcp-config", mcp_config, "--allowedTools", *PAD_TOOLS]
-           if mcp_config else []) \
-        + (["--resume", resume] if resume else []) \
-        + ["--system-prompt", system] \
-        + (["--model", model] if model else []) \
-        + (["--max-budget-usd", f"{max_usd:.2f}"] if max_usd > 0 else [])
-
-
 CODEX_READONLY_BY = (
     "codex exec --ignore-user-config --ignore-rules (so user/project MCP "
     "servers and rules are not loaded), --sandbox read-only, --ephemeral, "
@@ -379,10 +183,9 @@ def _codex_chat_args(exe: str, *, system: str, model: Optional[str],
                      resume: str = "", cwd: str = "") -> list[str]:
     """A one-shot Codex thinking turn, with user config and tools absent.
 
-    Codex does not expose the same held-open stream-json conversation shape
-    Claude Code does. `codex exec` reads one prompt, answers, and exits, so the
-    brainstorm room re-seeds the transcript on each turn. That is still local
-    Codex CLI auth, not an API key, and it avoids the expired Claude OAuth path.
+    `codex exec` reads one prompt, answers, and exits, so the brainstorm room
+    re-seeds the transcript on each turn. That is local Codex CLI auth, not an
+    API key.
 
     The safety claim is made with process flags rather than a prompt:
     --ignore-user-config keeps the persistent Builders Gate MCP registration
@@ -400,9 +203,7 @@ def _codex_chat_args(exe: str, *, system: str, model: Optional[str],
     return args + ["-"]
 
 
-# `find` is late-bound through this module's own globals rather than holding the
-# function object, so monkeypatching `runners.find_claude` (which the dispatch
-# tests do, to stand a fake CLI up on disk) is actually seen by the table.
+# `find` is late-bound so tests and local setup can patch the Codex lookup.
 RUNNERS: dict[str, Runner] = {
     "codex": Runner(
         name="codex", find=lambda: find_codex(), steerable=False, cost_tracked=False,
@@ -449,12 +250,10 @@ def preflight(runner: Runner, cwd: str, exe=_LOOK_IT_UP) -> Optional[str]:
     non-repo working directory makes every write land in a sandbox shadow and
     report success.
 
-    ``exe`` lets the caller pass a path it already resolved — dispatch keeps
-    the claude lookup on its own module (see dispatch._executable), so asking
-    the table again here could disagree with what is about to be launched. A
-    caller that passes None is saying IT FOUND NOTHING, which is why the
-    sentinel exists: falling back to the table on a falsy value would look the
-    CLI up a second way, pass, and hand Popen a None argv[0].
+    ``exe`` lets the caller pass a path it already resolved. A caller that
+    passes None is saying IT FOUND NOTHING, which is why the sentinel exists:
+    falling back to the table on a falsy value would look the CLI up a second
+    way, pass, and hand Popen a None argv[0].
     """
     resolved = runner.find() if exe is _LOOK_IT_UP else exe
     if not resolved:

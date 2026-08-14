@@ -59,6 +59,17 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const trunc = (s, n) => { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+  const modelError = s => {
+    const text = String(s || "").trim();
+    if (!text) return "파트너가 답하지 못했습니다";
+    if (/OAuth access token has expired|Re-authenticate to continue/i.test(text)) {
+      return "Codex CLI 로그인 세션이 만료됐습니다. 터미널에서 `codex login`으로 다시 로그인한 뒤 재시도하세요.";
+    }
+    if (/OPENAI_API_KEY|API key/i.test(text)) {
+      return "API 키 경로가 아니라 로컬 Codex CLI 실행 경로를 써야 합니다. 설정에서 실행기를 `codex`로 다시 확인하세요.";
+    }
+    return text;
+  };
 
   /* ── the director's work, shown as work ───────────────────────────────────
      A RUNNING TURN USED TO RENDER AS "reading the board…" AND A STEP COUNT.
@@ -79,7 +90,7 @@
   const TOOL_VERB = {
     queue_add: "큐에 넣음", queue_add_chain: "체인 구성", queue_update: "수정",
     queue_complete: "닫음", queue_get: "읽음", queue_list: "보드 읽음",
-    seat_brief: "brief 확인", seat_post_note: "메모 남김",
+    seat_brief: "지침 확인", seat_post_note: "메모 남김",
     bible_read: "바이블 읽음", bible_add: "바이블 작성",
     lore_add: "로어 추가", lore_fact: "사실 고정", canon_check: "캐논 검사",
     image_generate: "생성", blender_run: "모델링", godot_run: "게임 실행",
@@ -438,7 +449,7 @@
         if (this.target) {
           const still = (state.agents || []).some(
             a => a.state === "running" && Number(a.item_id) === this.target.id);
-          if (!still) { window.toast(`#${this.target.id} finished - talking to the director again`); this.aim(null); }
+          if (!still) { window.toast(`#${this.target.id} 완료 - 다시 총괄에게 말합니다`); this.aim(null); }
         }
         this.renderChat();
         this.renderQueue();
@@ -671,7 +682,7 @@
         // that failed, or somebody retypes a message the server already has.
         html += `<div class="ck-msg dir err"><div class="ck-who">메시지는 저장됐지만
           파트너가 답하지 못했습니다</div>
-          <div class="ck-txt">${esc(this.bsError)}</div></div>`;
+          <div class="ck-txt">${esc(modelError(this.bsError))}</div></div>`;
       }
       box.innerHTML = html;
       this._lastTurnSig = sig;
@@ -696,9 +707,9 @@
           { body: {}, quiet: true });
       } catch (e) { r = { ok: false, error: "대시보드에 닿지 못했습니다" }; }
       if (!r.ok) {
-        this.bsSheet(`<div class="ck-sh-h"><b>작업안을 만들지 못했습니다</b>
+        this.bsSheet(`<div class="ck-sh-h"><b>작업 초안을 만들지 못했습니다</b>
           <span class="ck-safe">큐에는 아무것도 넣지 않았습니다.</span></div>
-          <div class="ck-sh-b">${esc(r.error || "작업안 생성 실패")}</div>
+          <div class="ck-sh-b">${esc(r.error || "작업 계획 작성 실패")}</div>
           <div class="ck-sh-f"><button class="qbtn ghost" data-x="close">닫기</button></div>`);
         return;
       }
@@ -938,7 +949,7 @@
       // A 200 with reply:null is the no-partner path — the text IS saved, so
       // the box stays empty and the transcript says what happened instead.
       if (d.model && d.model.ok === false) {
-        this.bsError = d.model.error || "파트너가 답하지 못했습니다";
+        this.bsError = modelError(d.model.error || "파트너가 답하지 못했습니다");
       } else { this.bsError = null; }
       this.renderChat();
     },
@@ -1512,7 +1523,7 @@
       const n = document.getElementById("ck-review-n");
       if (n) n.textContent = String(held.length);
       if (!held.length) {
-        box.innerHTML = `<div class="ck-empty">nothing is held for approval</div>`;
+        box.innerHTML = `<div class="ck-empty">승인 대기 중인 항목이 없습니다</div>`;
         return;
       }
       box.innerHTML = held.slice(0, 20).map(i => `

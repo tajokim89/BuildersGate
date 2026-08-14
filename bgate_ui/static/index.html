@@ -450,7 +450,7 @@
 
              TWO HOSTS, NOT ONE, because they are two destinations. A local
              generator answers "can this machine make art right now"; an agent
-             CLI answers "is Builders Gate registered with Claude Code, against
+             CLI answers "is Builders Gate registered with the agent CLI, against
              which interpreter". Those are read at different moments for
              different reasons and share nothing but the word "local". They
              shipped as one pane called "Local & agents" — the "and" was the
@@ -729,7 +729,7 @@ let lastActivityId = 0;
  * an empty object — which does not even fire on a 500, because an error body is
  * still valid JSON, so the empty object never happened and the error was simply
  * never read.
- * So the backend's perfectly actionable sentence ("claude CLI not found on
+ * So the backend's perfectly actionable sentence ("agent CLI not found on
  * PATH") was binned and the failure rendered as nothing happening.
  *
  * The backend speaks two shapes and both are handled here:
@@ -1889,7 +1889,7 @@ async function addItem(){
 }
 
 async function dispatchItem(id){
-  // The most common first-run failure lives here: "claude CLI not found on
+  // The most common first-run failure lives here: "agent CLI not found on
   // PATH" comes back as 200 {ok:false,error} and used to be discarded whole.
   const r = await mutate(`/api/queue/${id}/dispatch`, {ok:`항목 ${id}에 에이전트를 투입했습니다`});
   if (!r.ok) return;

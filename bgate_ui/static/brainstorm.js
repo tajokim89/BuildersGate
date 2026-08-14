@@ -261,7 +261,7 @@
      * WHAT CHANGED AND WHY. This used to truncate at the first sentence
      * boundary before Deepgram's 2000-character cap and speak only that. That
      * was defensible against a small chat model told to answer in two short
-     * paragraphs; it is not defensible against a Claude Code session, which
+     * paragraphs; it is not defensible against a spawned CLI session, which
      * routinely writes past the cap — the human would hear a confident,
      * grammatical answer that simply stopped having a second half, with nothing
      * on screen saying so. A written reply that is cut off is visibly cut off;
@@ -1481,18 +1481,18 @@
    * ================================================================== */
   var COPY = {
     director: {
-      label: "Director brainstorm",
-      blurb: "what to build",
-      chatSub: "thinking out loud about scope, pillars and the cut line",
-      deployNote: "synthesises this session into work items for the board",
-      empty: "Talk through an idea. When it holds together, Deploy turns it into work items you review before anything is filed."
+      label: "디렉터 브레인스토밍",
+      blurb: "무엇을 만들지",
+      chatSub: "범위, 기둥, 컷 라인을 함께 정리",
+      deployNote: "이 세션을 보드 작업 항목으로 정리",
+      empty: "아이디어를 대화로 정리하세요. 형태가 잡히면 투입이 작업 항목으로 바꾸고, 등록 전 사용자가 검토합니다."
     },
     narrative: {
-      label: "Narrative brainstorm",
-      blurb: "what is true",
-      chatSub: "thinking out loud about canon, lore and consistency",
-      deployNote: "synthesises this session into canon work - narrative seat only",
-      empty: "Talk through the world. When it holds together, Deploy turns it into canon updates you review before anything is filed."
+      label: "서사 브레인스토밍",
+      blurb: "무엇이 사실인지",
+      chatSub: "캐논, 설정, 일관성을 함께 정리",
+      deployNote: "이 세션을 서사 좌석의 캐논 작업으로 정리",
+      empty: "월드를 대화로 정리하세요. 형태가 잡히면 투입이 캐논 업데이트로 바꾸고, 등록 전 사용자가 검토합니다."
     }
   };
 
@@ -1572,7 +1572,7 @@
     var bar = document.createElement("div");
     bar.className = "bs-mdbar";
     bar.setAttribute("role", "toolbar");
-    bar.setAttribute("aria-label", "Writing pad formatting");
+    bar.setAttribute("aria-label", "글쓰기 패드 서식");
     bar.innerHTML = NOTE_TOOLS.map(function (t) {
       if (t.sep) return '<i class="bs-mdsep"></i>';
       return '<button type="button" class="bs-mdb" data-md="' + t.a + '" title="' +
@@ -1702,6 +1702,27 @@
     catch (e) { return ""; }
   }
 
+  function statusText(status) {
+    return ({
+      active: "진행 중",
+      archived: "보관됨",
+      deployed: "투입 완료",
+      closed: "종료됨",
+    })[String(status || "").toLowerCase()] || String(status || "세션 없음");
+  }
+
+  function modelError(text) {
+    text = String(text || "").trim();
+    if (!text) return "모델이 답하지 못했습니다";
+    if (/OAuth access token has expired|Re-authenticate to continue/i.test(text)) {
+      return "Codex CLI 로그인 세션이 만료됐습니다. 터미널에서 `codex login`으로 다시 로그인한 뒤 재시도하세요.";
+    }
+    if (/OPENAI_API_KEY|API key/i.test(text)) {
+      return "API 키 경로가 아니라 로컬 Codex CLI 실행 경로를 써야 합니다. 설정에서 실행기를 `codex`로 다시 확인하세요.";
+    }
+    return text;
+  }
+
   var ACTIVE = null;
 
   function Workspace(host, opts) {
@@ -1768,11 +1789,11 @@
     this.root.dataset.seat = this.seat;
     this.root.innerHTML =
       '<div class="bs-bar">' +
-        '<button class="bs-btn ghost" data-a="drawer" title="Saved sessions">' +
-          icon("sheet") + "<span>Sessions</span></button>" +
-        '<input class="bs-title" data-a="title" placeholder="untitled brainstorm" disabled>' +
+        '<button class="bs-btn ghost" data-a="drawer" title="저장된 세션">' +
+          icon("sheet") + "<span>세션</span></button>" +
+        '<input class="bs-title" data-a="title" placeholder="제목 없는 브레인스토밍" disabled>' +
         '<span class="bs-pill seat">' + icon(this.seat) + esc(c.label) + "</span>" +
-        '<span class="bs-pill" data-a="status">no session</span>' +
+        '<span class="bs-pill" data-a="status">세션 없음</span>' +
         '<span class="bs-spacer"></span>' +
         '<span class="bs-pill" data-a="model"></span>' +
         // THE PARTNER, and whether it is running. A process that only ever
@@ -1780,73 +1801,72 @@
         // invisible from here: there was no way to see it was on and no way to
         // turn it off. Chip says which; the button next to it is the answer.
         '<button class="bs-pill bs-partner" data-a="partner" hidden></button>' +
-        '<button class="bs-btn ghost" data-a="archive" title="Archive this session" disabled>' + icon("lock") + "</button>" +
+        '<button class="bs-btn ghost" data-a="archive" title="이 세션 보관" disabled>' + icon("lock") + "</button>" +
         '<button class="bs-btn primary bs-deploy" data-a="deploy" disabled title="' + esc(c.deployNote) + '">' +
-          icon("gate", 16) + "<span>Deploy<small>review first</small></span></button>" +
+          icon("gate", 16) + "<span>투입<small>먼저 검토</small></span></button>" +
       "</div>" +
       '<div class="bs-body">' +
         '<aside class="bs-drawer">' +
-          '<div class="bs-drawer-h"><span class="lbl">' + esc(this.seat) + " sessions</span>" +
-            '<button class="bs-btn ghost" data-a="new" title="New brainstorm">' + icon("edit") + "New</button></div>" +
+          '<div class="bs-drawer-h"><span class="lbl">' + esc(c.label) + " 세션</span>" +
+            '<button class="bs-btn ghost" data-a="new" title="새 브레인스토밍">' + icon("edit") + "새로 만들기</button></div>" +
           '<div class="bs-filter">' +
-            '<button data-f="active" class="on">Active</button>' +
-            '<button data-f="archived">Archived</button>' +
-            '<button data-f="all">All</button></div>' +
+            '<button data-f="active" class="on">진행 중</button>' +
+            '<button data-f="archived">보관됨</button>' +
+            '<button data-f="all">전체</button></div>' +
           '<ul class="bs-list"></ul>' +
         "</aside>" +
         '<div class="bs-panes">' +
           '<section class="bs-pane bs-chat">' +
-            '<div class="bs-ph">' + icon("agents") + '<span class="n">Chat</span>' +
+            '<div class="bs-ph">' + icon("agents") + '<span class="n">대화</span>' +
               '<span class="sub">' + esc(c.chatSub) + "</span></div>" +
             '<div class="bs-thread"></div>' +
             '<div class="bs-compose">' +
               '<div class="bs-voice" data-a="voicebar" role="status" aria-live="polite">' +
                 '<i class="bs-live"></i>' +
-                '<span><b>Mic is live</b></span>' +
+                '<span><b>마이크 켜짐</b></span>' +
                 '<span class="heard" data-a="heard"></span>' +
-                '<button class="bs-btn" data-a="micoff">' + icon("stop", 13) + "Stop</button>" +
+                '<button class="bs-btn" data-a="micoff">' + icon("stop", 13) + "중지</button>" +
               "</div>" +
-              '<textarea data-a="say" rows="2" placeholder="think out loud…" disabled></textarea>' +
+              '<textarea data-a="say" rows="2" placeholder="생각을 말로 풀어 주세요..." disabled></textarea>' +
               '<div class="bs-cfoot">' +
                 '<button class="bs-btn bs-mic" data-a="mic" disabled>' +
-                  icon("record", 14) + "<span>Talk</span></button>" +
+                  icon("record", 14) + "<span>말하기</span></button>" +
                 '<button class="bs-btn ghost" data-a="tts" disabled ' +
-                  'title="Speak the agent’s replies out loud">' +
-                  icon("mute", 13) + "<span>Silent</span></button>" +
+                  'title="에이전트 답변을 소리로 듣기">' +
+                  icon("mute", 13) + "<span>음소거</span></button>" +
                 // THE FOOTGUN GUARD. In the Agents view this composer sits one
                 // toggle away from the console's, which files a work item and
                 // spawns an agent for every sentence. Two chat boxes with
                 // opposite consequences need the difference stated in the box,
                 // not in the tab above it.
                 '<span class="bs-cheap">' + icon("spend", 13) +
-                  "<b>files nothing</b> · thinking only - no work item, no " +
-                  "dispatch, until you press Deploy</span>" +
+                  "<b>아직 기록하지 않음</b> · 투입을 누르기 전에는 작업 생성도 에이전트 실행도 없습니다</span>" +
                 '<span class="bs-spacer" style="flex:1"></span>' +
                 '<span class="bs-voice-why" data-a="voicewhy"></span>' +
-                '<span data-a="sendhint">Enter to send · Shift+Enter for a new line</span>' +
+                '<span data-a="sendhint">Enter 전송 · Shift+Enter 줄바꿈</span>' +
               "</div></div>" +
           "</section>" +
           '<div class="split" data-split="bs-chat" data-split-var="--bs-chat-w" ' +
             'data-split-min="320" data-split-max="58%"></div>' +
           '<section class="bs-pane bs-notes">' +
-            '<div class="bs-ph">' + icon("note") + '<span class="n">Writing pad</span>' +
+            '<div class="bs-ph">' + icon("note") + '<span class="n">글쓰기 패드</span>' +
               '<span class="bs-spacer"></span>' +
               '<span class="sub" data-a="notestate"></span>' +
-              '<button class="bs-btn ghost" data-a="prev" title="Preview markdown">' + icon("overview", 13) + "</button></div>" +
-            '<textarea class="bs-notes-area" data-a="notes" placeholder="notes, markdown welcome - autosaves" disabled></textarea>' +
+              '<button class="bs-btn ghost" data-a="prev" title="Markdown 미리보기">' + icon("overview", 13) + "</button></div>" +
+            '<textarea class="bs-notes-area" data-a="notes" placeholder="메모, Markdown 가능 - 자동 저장" disabled></textarea>' +
             '<div class="bs-notes-prev" hidden></div>' +
           "</section>" +
           '<div class="split" data-split="bs-notes" data-split-var="--bs-notes-w" ' +
             'data-split-min="220" data-split-max="45%"></div>' +
           '<section class="bs-pane bs-draw">' +
-            '<div class="bs-ph">' + icon("concept") + '<span class="n">Drawing pad</span>' +
+            '<div class="bs-ph">' + icon("concept") + '<span class="n">그림 패드</span>' +
               '<span class="bs-spacer"></span>' +
               '<span class="sub" data-a="drawstate"></span></div>' +
             '<div class="bs-padhost" style="flex:1;min-height:0;display:flex"></div>' +
           "</section>" +
           // NO TRANSCRIPT PANE HERE, deliberately. A pane rendering the
           // session's stream-json events was built and removed: asked for "the
-          // actual terminal claude code embedded", it would have been a
+          // actual terminal agent session embedded", it would have been a
           // different thing wearing the right label, which is worse than
           // nothing. A real interactive PTY is somebody else's feature. The raw
           // log path still rides in the payload as `thinker.log` for debugging.
@@ -2053,15 +2073,15 @@
     if (!m) { el.hidden = true; return; }
     el.hidden = false;
     el.className = "bs-pill " + (m.available ? "" : "warn");
-    // `label` is "claude · sonnet" — the RUNNER and the model, because the
+    // `label` is "runner · model" — the RUNNER and the model, because the
     // partner is a spawned CLI session now and which CLI it is matters as much
     // as which model. This pill used to render a bare model name from an API
     // this room no longer talks to.
     el.innerHTML = m.available
-      ? icon("verify", 12) + esc(m.label || m.model || "partner ready")
-      : icon("doctor", 12) + esc(m.label ? m.label + " · unavailable" : "no partner");
+      ? icon("verify", 12) + esc(m.label || m.model || "파트너 준비됨")
+      : icon("doctor", 12) + esc(m.label ? m.label + " · 사용 불가" : "파트너 없음");
     el.title = m.available
-      ? ("thinking partner: " + (m.label || "") +
+      ? ("생각 파트너: " + (m.label || "") +
          (m.readonly_by ? "\n\n이 프로젝트에는 쓸 수 없습니다: " + m.readonly_by : ""))
       : (m.reason || "");
   };
@@ -2080,7 +2100,7 @@
         (s.status === "archived" ? "arch" : "") + '">' +
         '<span class="t">' + esc(s.title) + "</span>" +
         '<span class="m"><i class="bs-dot ' + esc(s.status) + '"></i>' +
-        esc(s.status) + " · 메시지 " + (s.messages || 0) + "개 · " + esc(ago(s.updated_at)) + "</span></li>";
+        esc(statusText(s.status)) + " · 메시지 " + (s.messages || 0) + "개 · " + esc(ago(s.updated_at)) + "</span></li>";
     }).join("");
     ul.querySelectorAll("li[data-id]").forEach(function (li) {
       li.addEventListener("click", function () { self.open(Number(li.dataset.id)); });
@@ -2125,9 +2145,9 @@
     this.$('[data-a="archive"]').disabled = !s;
     this.$('[data-a="archive"]').innerHTML =
       icon(s && s.status === "archived" ? "run" : "lock") +
-      (s && s.status === "archived" ? "Reopen" : "");
+      (s && s.status === "archived" ? "다시 열기" : "");
     this.$('[data-a="archive"]').title = s && s.status === "archived"
-      ? "Reopen this session" : "Archive this session";
+      ? "이 세션 다시 열기" : "이 세션 보관";
     this.$('[data-a="deploy"]').disabled = !live;
     // An archived session takes no new turns, so it takes no voice either — and
     // the mic must not stay armed over one. Only ever ENABLES when voice is
@@ -2141,10 +2161,10 @@
 
     var pill = this.$('[data-a="status"]');
     pill.className = "bs-pill" + (!s ? "" : s.status === "deployed" ? " good" : s.status === "archived" ? " warn" : "");
-    pill.textContent = s ? s.status : "no session";
+    pill.textContent = s ? statusText(s.status) : "세션 없음";
     if (s && (s.deploys || []).length) {
       var n = s.deploys.reduce(function (a, d) { return a + ((d.items || []).length); }, 0);
-      pill.textContent = "deployed · " + n + " item" + (n === 1 ? "" : "s") + " filed";
+      pill.textContent = "투입 완료 · 등록된 작업 " + n + "개";
     }
 
     this.pad.load(s ? s.drawing : null);
@@ -2183,20 +2203,19 @@
     // billed for six turns and then went idle should still say so — that is
     // the whole reason spend.py exists.
     el.innerHTML = icon(live ? "run" : "stop", 12) +
-      "<span>" + (live ? "partner live" : (t.resumable ? "closed · resumes" : "closed")) +
-      (t.turns ? " · " + t.turns + " turn" + (t.turns === 1 ? "" : "s") : "") +
+      "<span>" + (live ? "파트너 실행 중" : (t.resumable ? "종료됨 · 재개 가능" : "종료됨")) +
+      (t.turns ? " · " + t.turns + "턴" : "") +
       (cost ? " · $" + cost.toFixed(2) : "") + "</span>" +
       (live ? icon("close", 11) : "");
     el.disabled = !live;
     el.title = live
-      ? ("A " + (t.runner || "CLI") + " session is running for this brainstorm" +
+      ? ((t.runner || "CLI") + " 세션이 이 브레인스토밍에서 실행 중입니다" +
          (t.tools && t.tools.length
-           ? " holding exactly: " + t.tools.join(", ") : " with no tools yet") +
-         ".\nClick to close it. Nothing you have written is lost - the next " +
-         "message picks the same conversation back up.")
+           ? ". 사용 중인 도구: " + t.tools.join(", ") : ". 아직 도구 없음") +
+         ".\n누르면 닫습니다. 작성한 내용은 사라지지 않고 다음 메시지가 같은 대화를 이어갑니다.")
       : (t.resumable
-         ? "No process running. Your next message resumes the same CLI session."
-         : "No process running. Your next message starts one.");
+         ? "실행 중인 프로세스 없음. 다음 메시지가 같은 CLI 세션을 재개합니다."
+         : "실행 중인 프로세스 없음. 다음 메시지가 새로 시작합니다.");
   };
 
   Workspace.prototype.closePartner = async function () {
@@ -2209,8 +2228,8 @@
       this.renderPartner(out.thinker);
       // Said out loud rather than left to a chip changing colour: "did that
       // actually do anything" is the exact doubt this button exists to remove.
-      toast(out.stopped ? "partner closed - your session is untouched"
-        : "no partner was running");
+      toast(out.stopped ? "파트너를 닫았습니다 - 세션은 그대로 유지됩니다"
+        : "실행 중인 파트너가 없습니다");
     } catch (e) { toast(e.message, true); el.disabled = false; }
   };
 
@@ -2229,7 +2248,7 @@
     this.drawRev = rev;
     this.session.drawing = scene;
     this.pad.load(scene);
-    this.$('[data-a="drawstate"]').textContent = "the partner drew";
+    this.$('[data-a="drawstate"]').textContent = "파트너가 그렸습니다";
   };
 
   Workspace.prototype.rename = async function (title) {
@@ -2353,7 +2372,7 @@
       // sent" there would have them retype a message that is already saved.
       html += '<div class="bs-msg bot err"><span class="who">' +
         (this.chatErrorKept ? "메시지는 저장됨 - 모델 응답 없음" : "전송되지 않음") +
-        "</span>" + '<div class="bub">' + esc(this.chatError) + "</div></div>";
+        "</span>" + '<div class="bub">' + esc(modelError(this.chatError)) + "</div></div>";
     }
     thread.innerHTML = html;
     thread.scrollTop = thread.scrollHeight;
@@ -2400,7 +2419,7 @@
       // box stays empty and the banner says so; refilling it would invite a
       // duplicate of a message the server already has.
       if (out.model && out.model.ok === false) {
-        this.chatError = out.model.error || "모델이 답하지 못했습니다";
+        this.chatError = modelError(out.model.error || "모델이 답하지 못했습니다");
         this.chatErrorKept = true;
       }
     } catch (e) {
@@ -2462,12 +2481,11 @@
     if (!this.session) return;
     await this.flush();
     this.sheet(
-      '<div class="bs-card-h"><h3>' + icon("gate", 17) + "Reading the session…</h3>" +
+      '<div class="bs-card-h"><h3>' + icon("gate", 17) + "세션을 읽는 중...</h3>" +
       '<div class="bs-safe"><span class="bs-spin"></span>' +
-      "Synthesising a proposal. <b>Nothing is being queued</b> - this step only reads." +
+      "작업안을 만드는 중입니다. <b>아직 큐에는 넣지 않습니다</b>. 이 단계는 읽기만 합니다." +
       "</div></div>" +
-      '<div class="bs-card-b"><div class="bs-empty">the model is reading the conversation, ' +
-      "the notes pad and the drawing…</div></div>");
+      '<div class="bs-card-b"><div class="bs-empty">모델이 대화, 메모 패드, 그림 패드를 읽는 중...</div></div>');
     try {
       var out = await API.synthesize(this.session.id);
       if (this.dead) return;
@@ -2476,12 +2494,12 @@
       this.renderReview();
     } catch (e) {
       this.sheet(
-        '<div class="bs-card-h"><h3>' + icon("doctor", 17) + "Could not synthesize</h3>" +
-        '<div class="bs-safe done">' + icon("verify", 14) + "Nothing was queued.</div></div>" +
-        '<div class="bs-card-b"><div class="bs-summary">' + esc(e.message) + "</div></div>" +
+        '<div class="bs-card-h"><h3>' + icon("doctor", 17) + "작업안을 만들지 못했습니다</h3>" +
+        '<div class="bs-safe done">' + icon("verify", 14) + "큐에는 아무것도 넣지 않았습니다.</div></div>" +
+        '<div class="bs-card-b"><div class="bs-summary">' + esc(modelError(e.message)) + "</div></div>" +
         '<div class="bs-card-f"><span class="bs-spacer"></span>' +
-        '<button class="bs-btn" data-x="close">Close</button>' +
-        '<button class="bs-btn primary" data-x="retry">Try again</button></div>');
+        '<button class="bs-btn" data-x="close">닫기</button>' +
+        '<button class="bs-btn primary" data-x="retry">다시 시도</button></div>');
       this.wireSheet();
     }
   };
@@ -2508,36 +2526,34 @@
         "</div>" +
         '<textarea data-k="brief" aria-label="brief" placeholder="the brief the agent will act on">' +
           esc(it.brief) + "</textarea></div>";
-    }).join("") : '<div class="bs-empty"><b>the model proposed no work items</b>' +
-      "There is nothing to file from this session yet. Close this, keep talking, and try again.</div>";
+        }).join("") : '<div class="bs-empty"><b>모델이 제안한 작업이 없습니다</b>' +
+      "이 세션에서 등록할 작업이 아직 없습니다. 닫고 대화를 이어 간 뒤 다시 시도하세요.</div>";
 
     this.sheet(
       '<div class="bs-card-h">' +
-        "<h3>" + icon("gate", 17) + "Review the plan before anything is filed</h3>" +
+        "<h3>" + icon("gate", 17) + "등록 전 작업 계획 검토</h3>" +
         '<div class="bs-safe">' + icon("verify", 14) +
-          "<span><b>Nothing has been queued.</b> This is a proposal - no work item exists " +
-          "until you press Confirm below.</span></div>" +
+          "<span><b>아직 큐에는 넣지 않았습니다.</b> 아래 확인을 누르기 전까지 작업 항목은 생기지 않습니다.</span></div>" +
       "</div>" +
       '<div class="bs-card-b">' +
-        (plan.summary ? '<div><div class="bs-sec-h">what this session decided</div>' +
+        (plan.summary ? '<div><div class="bs-sec-h">이 세션에서 정한 내용</div>' +
           '<div class="bs-summary">' + md(plan.summary) + "</div></div>" : "") +
-        ((plan.questions || []).length ? '<div><div class="bs-sec-h">open questions</div>' +
+        ((plan.questions || []).length ? '<div><div class="bs-sec-h">열린 질문</div>' +
           '<ul class="bs-qs">' + plan.questions.map(function (q) { return "<li>" + esc(q) + "</li>"; }).join("") +
           "</ul></div>" : "") +
-        ((plan.notes || []).length ? '<div><div class="bs-sec-h">corrections made to the model’s answer</div>' +
+        ((plan.notes || []).length ? '<div><div class="bs-sec-h">모델 답변에 적용된 교정</div>' +
           '<ul class="bs-notes-list">' + plan.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") +
           "</ul></div>" : "") +
         (prior ? '<div class="bs-safe" style="background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)">' +
-          icon("lock", 14) + "<span>This exact plan was already filed from this session as " +
+          icon("lock", 14) + "<span>이 작업안은 이미 이 세션에서 " +
           esc((prior.items || []).map(function (i) { return "#" + i.id; }).join(", ")) +
-          ". Confirming again files a second copy.</span></div>" : "") +
-        '<div><div class="bs-sec-h">work items - ' + items.length +
-          (items.length === 1 ? " item" : " items") + " this will file</div>" + itemHtml + "</div>" +
+          " 항목으로 등록됐습니다. 다시 확인하면 같은 작업이 한 번 더 등록됩니다.</span></div>" : "") +
+        '<div><div class="bs-sec-h">등록 예정 작업 - ' + items.length +
+          "개</div>" + itemHtml + "</div>" +
         (items.length > 1 ? '<label class="bs-chain">' +
           '<input type="checkbox" data-k="chained"' + (plan.chained ? " checked" : "") + ">" +
-          "<span><b>Run as a chain</b> - each item waits for the one before it. " +
-          "Leave off when they are independent; priority alone will not stop two agents " +
-          "starting in the same tick.</span></label>" : "") +
+          "<span><b>체인으로 실행</b> - 각 항목이 앞 항목 완료를 기다립니다. " +
+          "서로 독립이면 끄세요. 우선순위만으로는 두 에이전트가 같은 순간 시작되는 일을 막지 못합니다.</span></label>" : "") +
       "</div>" +
       '<div class="bs-card-f">' +
         '<span class="bs-pill">' + esc((meta.model && meta.model.model) || "") + " · ~$" +
