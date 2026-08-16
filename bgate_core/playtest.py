@@ -427,6 +427,15 @@ def stop(root: str | os.PathLike[str], session_id: Optional[int] = None, *,
         summary["transcript"] = {"ok": False, "error": "no audio captured"}
         return summary
 
+    if result.get("audio_silent"):
+        _ready(root, session_id)
+        summary["transcript"] = {
+            "ok": True,
+            "segments": [],
+            "warning": "입력 오디오가 없어 음성 전사를 건너뛰었습니다.",
+        }
+        return summary
+
     summary["transcript"] = transcribe_session(
         root, session_id, model=model, audio_offset_s=result["audio_offset_s"])
     return summary

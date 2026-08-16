@@ -1,10 +1,10 @@
-"""Session recording — game window video (ffmpeg gdigrab) + mic (sounddevice).
+"""Session recording — screen video (ffmpeg) + optional mic (sounddevice).
 
-Two separate streams on one clock rather than one muxed ffmpeg command, because
-the mic is the part that fails and it must fail LOUDLY and EARLY. ffmpeg's dshow
-enumeration finds nothing on this machine, while sounddevice sees the devices
-fine — so audio goes through sounddevice, which also lets us measure signal
-before committing to a 20-minute recording.
+Two separate streams on one clock rather than one muxed ffmpeg command. Video is
+the required evidence; audio is best-effort and may be absent on kiosk/test rigs.
+ffmpeg's dshow enumeration finds nothing on this machine, while sounddevice sees
+the devices fine — so audio goes through sounddevice, which also lets us measure
+signal before committing to a 20-minute recording.
 
 The clock: every stream records its own wall-clock start. All downstream
 timestamps are SECONDS FROM SESSION START, so transcript, frames, and telemetry
@@ -78,13 +78,17 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
     during the 1.5s probe: idle output is indistinguishable from a muted mic.
     Blocking those wastes more sessions than it saves. If no signal is heard we
     pass with a warning instead, and the empty-transcript case is caught on the
-    far side. ok=False only when there is genuinely no openable device.
+    far side. If no input device exists at all, video-only recording still
+    starts with audio_optional=True and a silent placeholder wav at stop time.
     """
     try:
         import numpy as np
         import sounddevice as sd
     except Exception as exc:
-        return {"ok": False, "reason": f"오디오 의존성을 사용할 수 없습니다: {exc}"}
+        return {"ok": True, "device": None, "name": "", "rms": 0.0, "peak": 0.0,
+                "signal_detected": False, "audio_optional": True,
+                "reason": f"오디오 의존성을 사용할 수 없습니다: {exc}",
+                "warning": "오디오 의존성을 사용할 수 없어 영상만 녹화합니다."}
 
     # Try-order: the requested (or default) device first, then EVERY other input
     # device. A wireless headset — usually the system default — sleeps/powers off
@@ -108,7 +112,10 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
     except Exception:
         pass
     if not order:
-        return {"ok": False, "reason": "입력 오디오 장치가 없습니다."}
+        return {"ok": True, "device": None, "name": "", "rms": 0.0, "peak": 0.0,
+                "signal_detected": False, "audio_optional": True,
+                "reason": "입력 오디오 장치가 없습니다.",
+                "warning": "입력 오디오 장치가 없어 영상만 녹화합니다."}
 
     info = None
     rec = None
@@ -126,8 +133,10 @@ def probe_mic(device: Optional[int] = None, seconds: float = 1.5) -> dict:
         device = dev
         break
     if rec is None or info is None:
-        return {"ok": False, "device": order[0],
-                "reason": f"열 수 있는 입력 장치가 없습니다. 시도 {len(order)}회: {last_err}"}
+        return {"ok": True, "device": None, "name": "", "rms": 0.0, "peak": 0.0,
+                "signal_detected": False, "audio_optional": True,
+                "reason": f"열 수 있는 입력 장치가 없습니다. 시도 {len(order)}회: {last_err}",
+                "warning": "열 수 있는 입력 장치가 없어 영상만 녹화합니다."}
     fell_back = preferred is not None and device != preferred
 
     peak = float(np.max(np.abs(rec)))
@@ -153,6 +162,54 @@ def find_ffmpeg() -> str:
     if not exe:
         raise RecorderError("ffmpeg not found on PATH — needed for screen capture")
     return exe
+
+
+def _parse_avfoundation_devices(text: str, section: str) -> list[dict]:
+    """Parse ffmpeg's avfoundation device listing for video or audio."""
+    marker = f"AVFoundation {section} devices:"
+    if marker not in text:
+        return []
+    block = text.split(marker, 1)[1]
+    for next_marker in ("AVFoundation video devices:",
+                        "AVFoundation audio devices:"):
+        if next_marker != marker and next_marker in block:
+            block = block.split(next_marker, 1)[0]
+            break
+    devices = []
+    for line in block.splitlines():
+        match = re.search(r"\[(\d+)\]\s+(.+?)\s*$", line)
+        if match:
+            devices.append({
+                "index": int(match.group(1)),
+                "name": match.group(2).strip(),
+            })
+    return devices
+
+
+def _mac_avfoundation_devices(ffmpeg: Optional[str] = None) -> dict:
+    exe = ffmpeg or find_ffmpeg()
+    proc = subprocess.run(
+        [exe, "-hide_banner", "-f", "avfoundation",
+         "-list_devices", "true", "-i", ""],
+        capture_output=True, text=True, timeout=10,
+        stdin=subprocess.DEVNULL,
+    )
+    text = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    return {
+        "video": _parse_avfoundation_devices(text, "video"),
+        "audio": _parse_avfoundation_devices(text, "audio"),
+        "raw": text,
+        "returncode": proc.returncode,
+    }
+
+
+def _mac_screen_device(devices: Optional[Sequence[dict]] = None) -> Optional[dict]:
+    rows = list(devices if devices is not None else _mac_avfoundation_devices()["video"])
+    for dev in rows:
+        name = str(dev.get("name", "")).lower()
+        if any(token in name for token in ("screen", "display", "화면", "디스플레이")):
+            return dev
+    return None
 
 
 def list_windows(filter_text: str = "") -> list[dict]:
@@ -206,11 +263,11 @@ def resolve_window(window_title: Optional[str] = None, *,
     window rather than the substring the user typed.
     """
     if sys.platform != "win32":
-        # gdigrab is Windows-only anyway; there is nothing to enumerate against.
-        return {"title": window_title, "whole_desktop": window_title is None,
+        # Native window enumeration is Windows-only here. macOS captures the
+        # composited display through avfoundation instead.
+        return {"title": None, "whole_desktop": True,
                 "matches": [],
-                "note": "window enumeration is Windows-only — title passed through "
-                        "unchecked"}
+                "note": "이 플랫폼에서는 창 제목 대신 전체 화면을 녹화합니다."}
     try:
         visible = list_windows()
     except Exception as exc:                  # powershell missing/blocked
@@ -268,30 +325,33 @@ def probe_video_capture(window_title: Optional[str] = None, *,
             "reason": window["note"],
         }
     if sys.platform == "darwin":
-        ffmpeg = find_ffmpeg()
-        proc = subprocess.run(
-            [ffmpeg, "-hide_banner", "-f", "avfoundation",
-             "-list_devices", "true", "-i", ""],
-            capture_output=True, text=True, timeout=10,
-            stdin=subprocess.DEVNULL,
-        )
-        text = (proc.stderr or "") + "\n" + (proc.stdout or "")
-        video_section = text.split("AVFoundation video devices:", 1)[-1]
-        video_section = video_section.split("AVFoundation audio devices:", 1)[0]
-        has_video = bool(re.search(r"\[\d+\]\s+.+", video_section))
-        if has_video:
+        devices = _mac_avfoundation_devices()
+        screen = _mac_screen_device(devices["video"])
+        if screen:
+            return {
+                "ok": True,
+                "title": None,
+                "whole_desktop": True,
+                "matches": [screen],
+                "device": screen,
+                "reason": (f"macOS 화면 장치 '{screen['name']}'를 "
+                           "avfoundation으로 녹화합니다."),
+            }
+        if devices["video"]:
+            names = ", ".join(d["name"] for d in devices["video"])
             return {
                 "ok": False,
-                "reason": ("macOS 화면 장치는 보이지만 BuildersGate 0.1.x "
-                           "내장 녹화는 아직 Windows gdigrab 경로를 사용합니다. "
-                           "녹화 어댑터가 이식되기 전까지는 macOS 기본 화면 "
-                           "녹화나 QuickTime을 사용해야 합니다."),
+                "matches": devices["video"],
+                "reason": ("ffmpeg가 영상 장치는 보지만 화면 캡처 장치를 "
+                           f"찾지 못했습니다. 보이는 장치: {names}. "
+                           "macOS 화면 녹화 권한을 확인해야 합니다."),
             }
         return {
             "ok": False,
             "reason": ("현재 세션에서 ffmpeg avfoundation이 macOS 화면 녹화 "
-                       "장치를 볼 수 없습니다. 화면 녹화 권한을 확인하거나 "
-                       "QuickTime/macOS 기본 화면 녹화를 사용해야 합니다."),
+                       "장치를 볼 수 없습니다. 시스템 설정 > 개인정보 보호 "
+                       "및 보안 > 화면 및 시스템 오디오 녹음에서 Codex 또는 "
+                       "터미널 계열 실행 항목을 허용한 뒤 다시 시도하세요."),
         }
     return {
         "ok": False,
@@ -410,6 +470,23 @@ def _video_input(window_title: Optional[str], fps: int) -> tuple[list[str], str]
     rectangle; when it cannot, the crop is dropped rather than the recording —
     a whole-desktop capture is embarrassing, a black one is useless.
     """
+    if sys.platform == "darwin":
+        screen = _mac_screen_device()
+        if not screen:
+            raise RecorderError(
+                "macOS 화면 녹화 장치를 찾지 못했습니다. 시스템 설정의 "
+                "개인정보 보호 및 보안 > 화면 및 시스템 오디오 녹음 권한을 "
+                "확인한 뒤 다시 시도하세요."
+            )
+        args = [
+            "-f", "avfoundation",
+            "-framerate", str(fps),
+            "-capture_cursor", "1",
+            "-capture_mouse_clicks", "1",
+            "-i", f"{screen['index']}:none",
+        ]
+        return args, f"macOS 화면 장치 '{screen['name']}' 전체"
+
     args = ["-f", "gdigrab", "-framerate", str(fps), "-draw_mouse", "1"]
     if not window_title:
         return [*args, "-i", "desktop"], "the whole desktop"
@@ -466,11 +543,8 @@ def start(out_dir: str | Path, *, window_title: Optional[str] = None,
     window_title  gdigrab target. Must match a visible window or this raises.
     window_hints  tried in order when no title is given; the desktop is the
                   last resort, and rec.window_note says which happened.
-    mic_device    sounddevice input index. Probed first — a silent mic aborts.
+    mic_device    sounddevice input index. Missing audio falls back to video-only.
     """
-    import numpy as np
-    import sounddevice as sd
-
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -480,7 +554,7 @@ def start(out_dir: str | Path, *, window_title: Optional[str] = None,
             f"mic preflight failed: {probe['reason']}. "
             "Recording a silent session wastes the whole playthrough."
         )
-    mic_device = probe["device"]
+    mic_device = probe.get("device")
 
     ffmpeg = find_ffmpeg()
     # Raises when an explicit title matches nothing — before a frame is written.
@@ -494,6 +568,8 @@ def start(out_dir: str | Path, *, window_title: Optional[str] = None,
     rec.window_title = window_title
     rec.window_note = window["note"]
     rec.mic_name = probe.get("name", "")
+    if probe.get("warning"):
+        rec._err.append(probe["warning"])
 
     # --- video ---------------------------------------------------------
     # A CROPPED DESKTOP GRAB, never `title=`. See window_rect above for why
@@ -524,6 +600,14 @@ def start(out_dir: str | Path, *, window_title: Optional[str] = None,
         )
 
     # --- audio ---------------------------------------------------------
+    if mic_device is None:
+        rec.audio_started_at = rec.started_at
+        rec._last_signal_at = rec.audio_started_at
+        return rec
+
+    import numpy as np
+    import sounddevice as sd
+
     def on_audio(indata, frames, time_info, status):
         if status:
             rec._err.append(str(status))
@@ -616,6 +700,16 @@ def stop(rec: Recording, timeout: int = 60) -> dict:
             wf.setsampwidth(2)
             wf.setframerate(MIC_RATE)
             wf.writeframes(pcm.tobytes())
+    elif rec.audio_path:
+        # Keep the playtest row complete without spending whisper time on a
+        # missing input device. playtest.stop() will see audio_silent=True.
+        audio_seconds = 0.25
+        with wave.open(str(rec.audio_path), "wb") as wf:
+            wf.setnchannels(MIC_CHANNELS)
+            wf.setsampwidth(2)
+            wf.setframerate(MIC_RATE)
+            wf.writeframes(b"\x00\x00" * int(MIC_RATE * audio_seconds))
+        rec._err.append("입력 오디오가 없어 무음 오디오 파일을 만들었습니다.")
 
     video_ok, video_err = True, ""
     if rec._proc is not None:
@@ -642,8 +736,10 @@ def stop(rec: Recording, timeout: int = 60) -> dict:
         "audio_path": str(rec.audio_path) if rec.audio_path and rec.audio_path.exists() else None,
         "duration_s": round(ended - rec.started_at, 2),
         "audio_seconds": round(audio_seconds, 2),
+        "audio_silent": not bool(rec._frames),
         # Streams don't start at the same instant; downstream must correct for it.
-        "audio_offset_s": round(rec.audio_started_at - rec.started_at, 3),
+        "audio_offset_s": round((rec.audio_started_at or rec.started_at)
+                                - rec.started_at, 3),
         "video_offset_s": round(rec.video_started_at - rec.started_at, 3),
         "video_ok": video_ok,
         "video_error": video_err,
